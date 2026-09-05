@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Générateur de contenu — Box Collector</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 20px 16px 60px; background: #0d0a13;
+    display: flex; justify-content: center;
+    font-family: -apple-system, 'Inter', sans-serif;
+  }
+  #gc-root { max-width: 920px; width: 100%; color: #f3eee2; }
+  #gc-root {
+    --gold: #d8b46a; --gold-soft: #ecd8a6; --panel: #201931; --panel-2: #2a2140;
+    --border: rgba(216,180,106,0.18); --border-strong: rgba(216,180,106,0.4);
+    --text-dim: #b6accd; --text-mute: #837a9c; --danger: #e2685e; --emerald: #52b993;
+  }
+  h1 { font-size: 19px; margin: 0 0 4px; color: var(--gold-soft); }
+  .gc-sub { font-size: 13px; color: var(--text-dim); margin: 0 0 18px; line-height: 1.5; }
+
+  .gc-vues { display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .gc-vue-btn {
+    background: transparent; border: none; color: var(--text-dim); font-size: 13.5px; font-weight: 600;
+    padding: 9px 16px 11px; cursor: pointer; border-bottom: 2px solid transparent;
+  }
+  .gc-vue-btn.actif { color: var(--gold-soft); border-bottom-color: var(--gold); }
+
+  .gc-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+
+  .gc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .gc-btn {
+    padding: 9px 14px; border-radius: 8px; border: 1px solid var(--border-strong);
+    background: var(--panel-2); color: var(--gold-soft); font-weight: 600; font-size: 13px;
+    cursor: pointer; font-family: inherit;
+  }
+  .gc-btn:hover { background: #352a4f; }
+  .gc-btn-plein { background: var(--gold); color: #241a0a; border-color: var(--gold); }
+  .gc-btn-plein:hover { background: var(--gold-soft); }
+
+  textarea#gc-code {
+    width: 100%; min-height: 480px; background: #100c19; color: #dcd6ea;
+    border: 1px solid var(--border-strong); border-radius: 8px; padding: 14px;
+    font-family: ui-monospace, 'SF Mono', Consolas, monospace; font-size: 12.5px; line-height: 1.55;
+    resize: vertical; tab-size: 2;
+  }
+  textarea#gc-code:focus { outline: none; border-color: var(--gold); }
+
+  .gc-msg { font-size: 12.5px; margin-top: 10px; padding: 10px 12px; border-radius: 8px; display: none; line-height: 1.5; }
+  .gc-msg.gc-visible { display: block; }
+  .gc-msg-err { background: rgba(226,104,94,0.12); border: 1px solid rgba(226,104,94,0.35); color: #f3a39c; }
+  .gc-msg-warn { background: rgba(216,180,106,0.1); border: 1px solid rgba(216,180,106,0.3); color: var(--gold-soft); }
+  .gc-msg-ok { background: rgba(82,185,147,0.12); border: 1px solid rgba(82,185,147,0.35); color: var(--emerald); }
+  .gc-msg ul { margin: 6px 0 0 18px; padding: 0; }
+
+  .gc-tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .gc-tab {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text-dim);
+    font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 20px; cursor: pointer;
+  }
+  .gc-tab.actif { background: var(--gold); color: #241a0a; border-color: var(--gold); }
+
+  .gc-intro { font-size: 12.5px; color: var(--text-dim); margin: 0 0 14px; line-height: 1.5; }
+  .gc-list { display: flex; flex-direction: column; gap: 6px; }
+  .gc-row { display: flex; align-items: center; gap: 8px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+  .gc-reorder { display: flex; flex-direction: column; gap: 2px; }
+  .gc-mini { width: 22px; height: 18px; font-size: 10px; background: var(--panel); border: 1px solid var(--border-strong); color: var(--text-dim); border-radius: 4px; cursor: pointer; line-height: 1; }
+  .gc-mini:disabled { opacity: 0.3; cursor: default; }
+  .gc-input {
+    background: var(--panel); border: 1px solid var(--border-strong); border-radius: 6px; color: var(--text-dim);
+    padding: 7px 9px; font-size: 13px; font-family: inherit;
+  }
+  .gc-input:focus { outline: none; border-color: var(--gold); color: #f3eee2; }
+  .gc-input-sm { width: 80px; }
+  .gc-input-titre { font-weight: 700; font-size: 14px; color: #f3eee2; flex: 1; }
+  .gc-hint { font-size: 11px; color: var(--text-mute); }
+  .gc-del {
+    background: transparent; border: none; color: var(--text-mute); font-size: 15px; cursor: pointer;
+    width: 24px; height: 24px; border-radius: 6px; flex: 0 0 auto;
+  }
+  .gc-del:hover { background: rgba(226,104,94,0.15); color: var(--danger); }
+
+  .gc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .gc-grid-large { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; }
+  .gc-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .gc-card-dlc { border-color: rgba(82,185,147,0.3); }
+  .gc-card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+  .gc-row-inline { display: flex; gap: 14px; margin: 8px 0; }
+  .gc-champ-label { font-size: 11px; color: var(--text-mute); display: flex; flex-direction: column; gap: 4px; }
+  .gc-color { width: 44px; height: 30px; padding: 2px; border-radius: 6px; border: 1px solid var(--border-strong); background: var(--panel); cursor: pointer; }
+  .gc-souscat { font-size: 11.5px; color: var(--text-mute); margin: 10px 0 6px; text-transform: uppercase; letter-spacing: 0.03em; }
+  .gc-items { display: flex; flex-direction: column; gap: 6px; }
+  .gc-item-row { display: flex; gap: 6px; align-items: center; }
+  .gc-select { background: var(--panel); border: 1px solid var(--border-strong); border-radius: 6px; color: var(--text-dim); padding: 6px 8px; font-size: 12.5px; font-family: inherit; }
+  .gc-btn-petit { padding: 6px 11px; font-size: 12px; }
+  .gc-btn-fantome { background: transparent; }
+
+  .gc-toast {
+    position: fixed; left: 50%; bottom: 20px; transform: translate(-50%, 12px);
+    background: #2a2140; border: 1px solid var(--border-strong); color: #f3eee2;
+    padding: 10px 18px; border-radius: 8px; font-size: 12.5px; opacity: 0; pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s ease; z-index: 10;
+  }
+  .gc-toast.gc-visible { opacity: 1; transform: translate(-50%, 0); }
+
+  @media (max-width: 560px) {
+    textarea#gc-code { min-height: 360px; font-size: 11.5px; }
+  }
+</style>
+</head>
+<body>
+<div id="gc-root">
+  <h1>Générateur de contenu — Box Collector</h1>
+  <p class="gc-sub">
+    Colle ton <code>contenu.js</code>, passe en interface pour l'éditer visuellement, puis reviens au
+    code quand tu veux récupérer le fichier final. Rien n'est envoyé nulle part : tout se passe dans ton navigateur.
+  </p>
+
+  <div class="gc-vues" id="gc-vues"></div>
+  <div class="gc-panel" id="gc-panel"></div>
+</div>
+<div class="gc-toast" id="gc-toast"></div>
+
+<script>
+(function () {
+"use strict";
+
+/* =====================================================================
+   OUTILS
+   ===================================================================== */
+
+function slug(texte) {
+  return String(texte)
+    .replace(/œ/g, "oe").replace(/Œ/g, "OE")
+    .replace(/æ/g, "ae").replace(/Æ/g, "AE")
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+function escAttr(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function escHtml(s) { return escAttr(s); }
+function jsStr(s) { return JSON.stringify(String(s == null ? "" : s)); }
+
+let PROCHAIN_UID = 1;
+function nouvelUid() { return PROCHAIN_UID++; }
+
+function creerRarite(nom) { return { uid: nouvelUid(), nom }; }
+function creerItem(nom, rariteUid) { return { uid: nouvelUid(), nom, rariteUid }; }
+function creerBoite(nom, prix, matiere, items) { return { uid: nouvelUid(), nom, prix, matiere, items }; }
+
+/* =====================================================================
+   CONTENU PAR DÉFAUT (identique à contenu.js)
+   ===================================================================== */
+
+function etatParDefaut() {
+  const rarites = ["Basique", "Commun", "Peu rare", "Rare", "Très rare", "Légendaire", "Mythique"].map(creerRarite);
+  const uidPar = (nom) => rarites.find((r) => r.nom === nom).uid;
+
+  const boxes = [
+    creerBoite("Boîte en Bois", 20, "#8b6a3f", [
+      creerItem("Épée rouillée", uidPar("Basique")),
+      creerItem("Bouclier en bois", uidPar("Basique")),
+      creerItem("Pomme", uidPar("Basique")),
+      creerItem("Dague en fer", uidPar("Peu rare")),
+      creerItem("Amulette mystérieuse", uidPar("Rare")),
+      creerItem("Couronne perdue", uidPar("Légendaire")),
+    ]),
+    creerBoite("Boîte en Argent", 60, "#b7bfc9", [
+      creerItem("Épée en fer", uidPar("Basique")),
+      creerItem("Potion de soin", uidPar("Basique")),
+      creerItem("Cape voyageur", uidPar("Peu rare")),
+      creerItem("Arc elfique", uidPar("Peu rare")),
+      creerItem("Orbe de mana", uidPar("Rare")),
+      creerItem("Plume de griffon", uidPar("Très rare")),
+    ]),
+    creerBoite("Boîte en Or", 150, "#d8b46a", [
+      creerItem("Épée en or", uidPar("Commun")),
+      creerItem("Bijou royal", uidPar("Peu rare")),
+      creerItem("Grimoire ancien", uidPar("Rare")),
+      creerItem("Écaille de dragon", uidPar("Très rare")),
+      creerItem("Larme de titan", uidPar("Légendaire")),
+      creerItem("Cœur du néant", uidPar("Mythique")),
+    ]),
+  ];
+
+  const dlcs = [
+    { uid: nouvelUid(), nom: "Pack DLC : Glace", code: "ICEDLC2026", boites: [
+      creerBoite("Boîte de Glace", 100, "#7fd8e0", [
+        creerItem("Flocon éternel", uidPar("Basique")),
+        creerItem("Épée de givre", uidPar("Peu rare")),
+        creerItem("Cœur de golem de glace", uidPar("Rare")),
+        creerItem("Phénix des glaces", uidPar("Légendaire")),
+      ]),
+    ] },
+    { uid: nouvelUid(), nom: "Pack DLC : Volcan", code: "VOLCANDLC2026", boites: [
+      creerBoite("Boîte de Volcan", 100, "#e0623f", [
+        creerItem("Braise ardente", uidPar("Basique")),
+        creerItem("Hache de magma", uidPar("Peu rare")),
+        creerItem("Salamandre de feu", uidPar("Rare")),
+        creerItem("Titan de lave", uidPar("Légendaire")),
+      ]),
+    ] },
+  ];
+
+  return { rarites, boxes, dlcs };
+}
+
+/* =====================================================================
+   CODE  →  ÉTAT  (analyse du texte collé)
+   ===================================================================== */
+
+function parserCode(texte) {
+  let brut;
+  try {
+    /* eslint-disable-next-line no-new-func */
+    const fn = new Function(
+      texte +
+      "\n;return { NOMS_RARETES: typeof NOMS_RARETES!=='undefined'?NOMS_RARETES:null, " +
+      "BOITES_DE_BASE: typeof BOITES_DE_BASE!=='undefined'?BOITES_DE_BASE:null, " +
+      "DLC_PACKS: typeof DLC_PACKS!=='undefined'?DLC_PACKS:null };"
+    );
+    brut = fn();
+  } catch (e) {
+    throw new Error("Erreur JavaScript dans le code collé : " + e.message);
+  }
+  if (!Array.isArray(brut.NOMS_RARETES)) throw new Error("NOMS_RARETES est introuvable, ou n'est pas une liste.");
+  if (!Array.isArray(brut.BOITES_DE_BASE)) throw new Error("BOITES_DE_BASE est introuvable, ou n'est pas une liste.");
+  if (!Array.isArray(brut.DLC_PACKS)) brut.DLC_PACKS = [];
+  return brut;
+}
+
+function convertirEnEtat(brut) {
+  const rarites = brut.NOMS_RARETES.map(creerRarite);
+  const avertissements = [];
+
+  function rariteUidPour(saisie, nomObjet) {
+    const cible = slug(saisie);
+    const trouve = rarites.find((r) => slug(r.nom) === cible);
+    if (!trouve) {
+      avertissements.push(`"${nomObjet}" : rareté "${saisie}" introuvable — réassigné à "${rarites[0] ? rarites[0].nom : "?"}"`);
+      return rarites[0] ? rarites[0].uid : null;
+    }
+    return trouve.uid;
+  }
+  function convBoite(b) {
+    return creerBoite(
+      b.nom || "Sans nom",
+      Number(b.prix) || 1,
+      b.matiere || "#8b6a3f",
+      (b.items || []).map((it) => creerItem(it.nom || "Sans nom", rariteUidPour(it.rarete, it.nom || "?")))
+    );
+  }
+  const boxes = brut.BOITES_DE_BASE.map(convBoite);
+  const dlcs = brut.DLC_PACKS.map((d) => ({
+    uid: nouvelUid(),
+    nom: d.nom || "DLC sans nom",
+    code: d.code || "CODE",
+    boites: (d.boites || []).map(convBoite),
+  }));
+
+  return { etat: { rarites, boxes, dlcs }, avertissements };
+}
+
+/* =====================================================================
+   ÉTAT  →  CODE  (génération du fichier commenté)
+   ===================================================================== */
+
+function rariteNomParUid(uid) {
+  const r = state.rarites.find((x) => x.uid === uid);
+  return r ? r.nom : (state.rarites[0] ? state.rarites[0].nom : "");
+}
+
+function genererItem(it, indent) {
+  return `${indent}{ nom: ${jsStr(it.nom)}, rarete: ${jsStr(rariteNomParUid(it.rariteUid))} },`;
+}
+function genererBoite(b, indent) {
+  const itemsTxt = b.items.map((it) => genererItem(it, indent + "    ")).join("\n");
+  return `${indent}{
+${indent}  nom: ${jsStr(b.nom)},
+${indent}  prix: ${Number(b.prix) || 1},
+${indent}  matiere: ${jsStr(b.matiere)},
+${indent}  items: [
+${itemsTxt}
+${indent}  ],
+${indent}},`;
+}
+function genererDlc(d, indent) {
+  const boitesTxt = d.boites.map((b) => genererBoite(b, indent + "    ")).join("\n");
+  return `${indent}{
+${indent}  nom: ${jsStr(d.nom)},
+${indent}  code: ${jsStr((d.code || "").toUpperCase())},
+${indent}  boites: [
+${boitesTxt}
+${indent}  ],
+${indent}},`;
+}
+
+function genererCode() {
+  const raretesTxt = state.rarites.map((r) => `  ${jsStr(r.nom)},`).join("\n");
+  const boitesTxt = state.boxes.map((b) => genererBoite(b, "  ")).join("\n");
+  const dlcTxt = state.dlcs.map((d) => genererDlc(d, "  ")).join("\n");
+
+  return `/* =====================================================================
+   CONTENU DU JEU — BOX COLLECTOR
+   =====================================================================
+   C'est le SEUL fichier que tu as besoin de modifier pour changer le
+   contenu du jeu : les raretés, les boîtes de base, et les DLC.
+   Ne touche pas à systeme.js — tout le moteur (probabilités, boutique,
+   sauvegarde, animation...) s'adapte tout seul à ce que tu écris ici.
+
+   Ce fichier doit être chargé AVANT systeme.js dans index.html.
+
+   Si tu fais une erreur (rareté mal orthographiée, deux boîtes avec le
+   même nom...), le jeu te l'affichera clairement à l'écran au lieu de
+   planter silencieusement.
+   ===================================================================== */
+
+
+/* =====================================================================
+   1. RARETÉS
+   =====================================================================
+   Une simple liste de noms, DANS L'ORDRE : la plus courante en haut,
+   la plus rare en bas. Le poids/la probabilité de chaque rareté est
+   calculé automatiquement par le jeu à partir de cet ordre.
+   ===================================================================== */
+
+const NOMS_RARETES = [
+${raretesTxt}
+];
+
+
+/* =====================================================================
+   2. BOÎTES DE BASE
+   =====================================================================
+   Toujours disponibles, sans DLC. "rarete" doit correspondre exactement
+   à un des noms de NOMS_RARETES ci-dessus.
+   ===================================================================== */
+
+const BOITES_DE_BASE = [
+${boitesTxt}
+
+  // Pour ajouter une nouvelle boîte de base, copie-colle un bloc
+  // { nom: ..., prix: ..., matiere: ..., items: [...] } ci-dessus,
+  // juste avant cette ligne, et modifie-le.
+];
+
+
+/* =====================================================================
+   3. DLC
+   =====================================================================
+   "code" est ce que le joueur tape pour débloquer le DLC. "boites" suit
+   exactement le même format que dans BOITES_DE_BASE.
+   ===================================================================== */
+
+const DLC_PACKS = [
+${dlcTxt}
+
+  // Pour ajouter un nouveau DLC, copie-colle un bloc
+  // { nom: ..., code: ..., boites: [...] } ci-dessus, juste avant
+  // cette ligne, et modifie-le.
+];
+`;
+}
+
+/* =====================================================================
+   ÉTAT DE L'OUTIL
+   ===================================================================== */
+
+let state = etatParDefaut();
+let codeTexte = "";
+const ui = { vue: "code", ongletInterface: "rarites" };
+
+function trouverBoiteParUid(uidBrut) {
+  const uid = Number(uidBrut);
+  let b = state.boxes.find((x) => x.uid === uid);
+  if (b) return b;
+  for (const d of state.dlcs) { b = d.boites.find((x) => x.uid === uid); if (b) return b; }
+  return null;
+}
+function toutesLesBoites() { return [...state.boxes, ...state.dlcs.flatMap((d) => d.boites)]; }
+function nouvelleBoite() { return creerBoite("Nouvelle boîte", 20, "#8b6a3f", [creerItem("Nouvel objet", state.rarites[0].uid)]); }
+function compterUsageRarete(uid) {
+  let n = 0;
+  toutesLesBoites().forEach((b) => b.items.forEach((it) => { if (it.rariteUid === uid) n++; }));
+  return n;
+}
+function reassignerRarete(uidSupprime) {
+  const idx = state.rarites.findIndex((r) => r.uid === uidSupprime);
+  const restants = state.rarites.filter((r) => r.uid !== uidSupprime);
+  if (!restants.length) return;
+  const fallback = restants[Math.max(0, Math.min(restants.length - 1, idx - 1))];
+  toutesLesBoites().forEach((b) => b.items.forEach((it) => { if (it.rariteUid === uidSupprime) it.rariteUid = fallback.uid; }));
+}
+
+/* =====================================================================
+   RENDU — vue Code
+   ===================================================================== */
+
+function renderVueCode() {
+  return `
+    <div class="gc-actions">
+      <button class="gc-btn gc-btn-plein" data-action="vers-interface">→ Passer en interface</button>
+      <button class="gc-btn" data-action="copier-code">Copier le code</button>
+      <button class="gc-btn" data-action="telecharger-code">Télécharger contenu.js</button>
+      <button class="gc-btn gc-btn-fantome" data-action="reinitialiser">Réinitialiser (exemple par défaut)</button>
+    </div>
+    <textarea id="gc-code" spellcheck="false">${escHtml(codeTexte)}</textarea>
+    <div class="gc-msg" id="gc-msg"></div>`;
+}
+
+/* =====================================================================
+   RENDU — vue Interface
+   ===================================================================== */
+
+const ONGLETS = [
+  { id: "rarites", label: "Raretés" },
+  { id: "boites", label: "Boîtes de base" },
+  { id: "dlc", label: "DLC" },
+];
+
+/* Poids RÉEL (non arrondi) : chaque rareté supplémentaire reste
+   strictement plus rare que la précédente, même bien au-delà de 7-8
+   raretés. Identique à systeme.js — c'est cette valeur que le jeu
+   utilisera vraiment, seul l'affichage ci-dessous arrondit. */
+function poidsAuto(index) { return 1000 / Math.pow(3, index); }
+
+function formaterPoids(p) { return p >= 10 ? String(Math.round(p)) : p.toPrecision(2); }
+function formaterPourcentage(pct) {
+  if (pct <= 0) return "0%";
+  if (pct >= 0.01) return pct.toFixed(2) + "%";
+  if (pct >= 0.0001) return pct.toFixed(4) + "%";
+  return pct.toExponential(1) + "%";
+}
+
+function renderRaretes() {
+  const total = state.rarites.reduce((s, _r, i) => s + poidsAuto(i), 0);
+  const lignes = state.rarites
+    .map((r, i) => {
+      const poids = poidsAuto(i);
+      const pct = (100 * poids) / total;
+      return `
+      <div class="gc-row">
+        <div class="gc-reorder">
+          <button class="gc-mini" data-action="rarite-monter" data-uid="${r.uid}" ${i === 0 ? "disabled" : ""}>▲</button>
+          <button class="gc-mini" data-action="rarite-descendre" data-uid="${r.uid}" ${i === state.rarites.length - 1 ? "disabled" : ""}>▼</button>
+        </div>
+        <input type="text" class="gc-input" style="flex:1" value="${escAttr(r.nom)}" data-action="maj-rarite-nom" data-uid="${r.uid}">
+        <span class="gc-hint" style="min-width:150px;">poids ${formaterPoids(poids)} · ${formaterPourcentage(pct)}</span>
+        <button class="gc-del" data-action="suppr-rarite" data-uid="${r.uid}" title="Supprimer">✕</button>
+      </div>`;
+    })
+    .join("");
+  return `
+    <p class="gc-intro">Ordre du plus courant (en haut) au plus rare (en bas). Poids et % calculés automatiquement.</p>
+    <div class="gc-list">${lignes}</div>
+    <button class="gc-btn gc-btn-plein" style="margin-top:14px;" data-action="ajouter-rarite">+ Ajouter une rareté</button>`;
+}
+
+function renderBoiteCarte(b) {
+  const itemsHtml = b.items
+    .map(
+      (it) => `
+      <div class="gc-item-row">
+        <input type="text" class="gc-input" style="flex:1" placeholder="Nom de l'objet" value="${escAttr(it.nom)}" data-action="maj-item-nom" data-boite="${b.uid}" data-item="${it.uid}">
+        <select class="gc-select" data-action="maj-item-rarete" data-boite="${b.uid}" data-item="${it.uid}">
+          ${state.rarites.map((r) => `<option value="${r.uid}" ${r.uid === it.rariteUid ? "selected" : ""}>${escHtml(r.nom)}</option>`).join("")}
+        </select>
+        <button class="gc-del" data-action="suppr-item" data-boite="${b.uid}" data-item="${it.uid}">✕</button>
+      </div>`
+    )
+    .join("");
+  return `
+  <div class="gc-card">
+    <div class="gc-card-head">
+      <input type="text" class="gc-input gc-input-titre" placeholder="Nom de la boîte" value="${escAttr(b.nom)}" data-action="maj-boite-champ" data-champ="nom" data-boite="${b.uid}">
+      <button class="gc-del" data-action="suppr-boite" data-uid="${b.uid}" title="Supprimer la boîte">✕</button>
+    </div>
+    <div class="gc-row-inline">
+      <label class="gc-champ-label">Prix
+        <input type="number" min="1" class="gc-input gc-input-sm" value="${b.prix}" data-action="maj-boite-champ" data-champ="prix" data-boite="${b.uid}">
+      </label>
+      <label class="gc-champ-label">Couleur
+        <input type="color" class="gc-color" value="${b.matiere}" data-action="maj-boite-champ" data-champ="matiere" data-boite="${b.uid}">
+      </label>
+    </div>
+    <p class="gc-souscat">Objets (${b.items.length})</p>
+    <div class="gc-items">${itemsHtml}</div>
+    <button class="gc-btn gc-btn-fantome gc-btn-petit" style="margin-top:8px;" data-action="ajouter-item" data-boite="${b.uid}">+ Objet</button>
+  </div>`;
+}
+
+function renderBoites() {
+  return (
+    `<p class="gc-intro">Ces boîtes sont toujours disponibles dans le jeu, sans DLC.</p>` +
+    `<div class="gc-grid">${state.boxes.map(renderBoiteCarte).join("")}</div>` +
+    `<button class="gc-btn gc-btn-plein" style="margin-top:14px;" data-action="ajouter-boite">+ Ajouter une boîte de base</button>`
+  );
+}
+
+function renderDlc() {
+  const cartes = state.dlcs
+    .map(
+      (d) => `
+      <div class="gc-card gc-card-dlc">
+        <div class="gc-card-head">
+          <input type="text" class="gc-input gc-input-titre" placeholder="Nom du DLC" value="${escAttr(d.nom)}" data-action="maj-dlc-champ" data-champ="nom" data-dlc="${d.uid}">
+          <button class="gc-del" data-action="suppr-dlc" data-uid="${d.uid}" title="Supprimer le DLC">✕</button>
+        </div>
+        <label class="gc-champ-label" style="max-width:260px; margin:10px 0;">Code d'activation
+          <input type="text" class="gc-input" value="${escAttr(d.code)}" data-action="maj-dlc-champ" data-champ="code" data-dlc="${d.uid}">
+        </label>
+        <p class="gc-souscat">Boîtes de ce DLC</p>
+        <div style="display:flex; flex-direction:column; gap:12px;">${d.boites.map(renderBoiteCarte).join("")}</div>
+        <button class="gc-btn gc-btn-fantome gc-btn-petit" style="margin-top:10px;" data-action="ajouter-boite-dlc" data-dlc="${d.uid}">+ Boîte pour ce DLC</button>
+      </div>`
+    )
+    .join("");
+  return (
+    `<p class="gc-intro">Chaque DLC regroupe un code d'activation et une ou plusieurs boîtes.</p>` +
+    `<div class="gc-grid-large">${cartes}</div>` +
+    `<button class="gc-btn gc-btn-plein" style="margin-top:14px;" data-action="ajouter-dlc">+ Ajouter un DLC</button>`
+  );
+}
+
+function renderVueInterface() {
+  const tabs = ONGLETS.map((o) => `<button class="gc-tab ${ui.ongletInterface === o.id ? "actif" : ""}" data-action="onglet" data-tab="${o.id}">${o.label}</button>`).join("");
+  let corps = "";
+  if (ui.ongletInterface === "rarites") corps = renderRaretes();
+  else if (ui.ongletInterface === "boites") corps = renderBoites();
+  else corps = renderDlc();
+
+  return `
+    <div class="gc-actions">
+      <button class="gc-btn gc-btn-plein" data-action="vers-code">→ Voir le code</button>
+    </div>
+    <div class="gc-tabs">${tabs}</div>
+    ${corps}`;
+}
+
+/* =====================================================================
+   RENDU GLOBAL
+   ===================================================================== */
+
+function render() {
+  document.getElementById("gc-vues").innerHTML = `
+    <button class="gc-vue-btn ${ui.vue === "code" ? "actif" : ""}" data-action="vue" data-vue="code">Code</button>
+    <button class="gc-vue-btn ${ui.vue === "interface" ? "actif" : ""}" data-action="vue" data-vue="interface">Interface</button>`;
+  document.getElementById("gc-panel").innerHTML = ui.vue === "code" ? renderVueCode() : renderVueInterface();
+}
+
+function afficherMessage(type, html) {
+  const el = document.getElementById("gc-msg");
+  if (!el) return;
+  el.className = "gc-msg gc-visible " + (type === "erreur" ? "gc-msg-err" : type === "avert" ? "gc-msg-warn" : "gc-msg-ok");
+  el.innerHTML = html;
+}
+
+let toastTimer = null;
+function afficherToast(msg) {
+  const el = document.getElementById("gc-toast");
+  el.textContent = msg;
+  el.classList.add("gc-visible");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("gc-visible"), 2400);
+}
+
+/* =====================================================================
+   INTERACTIONS
+   ===================================================================== */
+
+const racine = document.getElementById("gc-root");
+
+function passerEnInterface() {
+  const texte = document.getElementById("gc-code").value;
+  try {
+    const brut = parserCode(texte);
+    const { etat, avertissements } = convertirEnEtat(brut);
+    state = etat;
+    codeTexte = texte;
+    ui.vue = "interface";
+    ui.ongletInterface = "rarites";
+    render();
+    if (avertissements.length) afficherToast(avertissements.length + " objet(s) réassigné(s), vérifie l'onglet Boîtes/DLC.");
+    else afficherToast("Code analysé avec succès.");
+  } catch (e) {
+    afficherMessage("erreur", "Impossible d'analyser ce code : " + escHtml(e.message));
+  }
+}
+function passerEnCode() {
+  codeTexte = genererCode();
+  ui.vue = "code";
+  render();
+  afficherToast("Code régénéré depuis l'interface.");
+}
+
+racine.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-action]");
+  if (!el) return;
+  const action = el.dataset.action;
+
+  if (action === "vue") { ui.vue = el.dataset.vue; render(); return; }
+  if (action === "vers-interface") { passerEnInterface(); return; }
+  if (action === "vers-code") { passerEnCode(); return; }
+  if (action === "onglet") { ui.ongletInterface = el.dataset.tab; render(); return; }
+
+  if (action === "copier-code") {
+    const ta = document.getElementById("gc-code");
+    ta.select();
+    navigator.clipboard && navigator.clipboard.writeText(ta.value).then(
+      () => afficherToast("Code copié dans le presse-papiers."),
+      () => document.execCommand("copy")
+    ) || document.execCommand("copy");
+    return;
+  }
+  if (action === "telecharger-code") {
+    const texte = document.getElementById("gc-code").value;
+    const blob = new Blob([texte], { type: "text/javascript" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "contenu.js";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    return;
+  }
+  if (action === "reinitialiser") {
+    if (!confirm("Repartir du contenu par défaut ? Le texte actuel sera perdu s'il n'est pas copié.")) return;
+    state = etatParDefaut();
+    codeTexte = genererCode();
+    render();
+    return;
+  }
+
+  if (action === "ajouter-rarite") { state.rarites.push(creerRarite("Nouvelle rareté")); render(); return; }
+  if (action === "suppr-rarite") {
+    const uid = Number(el.dataset.uid);
+    if (state.rarites.length <= 1) { alert("Il faut garder au moins une rareté."); return; }
+    const usage = compterUsageRarete(uid);
+    if (usage > 0) {
+      if (!confirm(usage + " objet(s) utilisent cette rareté. Ils seront réassignés à la rareté la plus proche restante. Continuer ?")) return;
+      reassignerRarete(uid);
+    }
+    state.rarites = state.rarites.filter((r) => r.uid !== uid);
+    render();
+    return;
+  }
+  if (action === "rarite-monter" || action === "rarite-descendre") {
+    const uid = Number(el.dataset.uid);
+    const i = state.rarites.findIndex((r) => r.uid === uid);
+    const j = action === "rarite-monter" ? i - 1 : i + 1;
+    if (j < 0 || j >= state.rarites.length) return;
+    [state.rarites[i], state.rarites[j]] = [state.rarites[j], state.rarites[i]];
+    render();
+    return;
+  }
+
+  if (action === "ajouter-boite") { state.boxes.push(nouvelleBoite()); render(); return; }
+  if (action === "suppr-boite") {
+    const uid = Number(el.dataset.uid);
+    state.boxes = state.boxes.filter((b) => b.uid !== uid);
+    state.dlcs.forEach((d) => { d.boites = d.boites.filter((b) => b.uid !== uid); });
+    render();
+    return;
+  }
+  if (action === "ajouter-item") {
+    const b = trouverBoiteParUid(el.dataset.boite);
+    if (b) b.items.push(creerItem("Nouvel objet", state.rarites[0].uid));
+    render();
+    return;
+  }
+  if (action === "suppr-item") {
+    const b = trouverBoiteParUid(el.dataset.boite);
+    if (b) b.items = b.items.filter((it) => it.uid !== Number(el.dataset.item));
+    render();
+    return;
+  }
+
+  if (action === "ajouter-dlc") {
+    state.dlcs.push({ uid: nouvelUid(), nom: "Nouveau DLC", code: "CODE" + Math.floor(1000 + Math.random() * 9000), boites: [nouvelleBoite()] });
+    render();
+    return;
+  }
+  if (action === "suppr-dlc") { state.dlcs = state.dlcs.filter((d) => d.uid !== Number(el.dataset.uid)); render(); return; }
+  if (action === "ajouter-boite-dlc") {
+    const d = state.dlcs.find((x) => x.uid === Number(el.dataset.dlc));
+    if (d) d.boites.push(nouvelleBoite());
+    render();
+    return;
+  }
+});
+
+function gererSaisie(e) {
+  const el = e.target;
+  const action = el.dataset && el.dataset.action;
+  if (!action) return;
+
+  if (action === "maj-rarite-nom") {
+    const r = state.rarites.find((x) => x.uid === Number(el.dataset.uid));
+    if (r) r.nom = el.value;
+  } else if (action === "maj-boite-champ") {
+    const b = trouverBoiteParUid(el.dataset.boite);
+    if (!b) return;
+    b[el.dataset.champ] = el.dataset.champ === "prix" ? Math.max(1, parseInt(el.value, 10) || 1) : el.value;
+  } else if (action === "maj-item-nom") {
+    const b = trouverBoiteParUid(el.dataset.boite);
+    const it = b && b.items.find((x) => x.uid === Number(el.dataset.item));
+    if (it) it.nom = el.value;
+  } else if (action === "maj-item-rarete") {
+    const b = trouverBoiteParUid(el.dataset.boite);
+    const it = b && b.items.find((x) => x.uid === Number(el.dataset.item));
+    if (it) it.rariteUid = Number(el.value);
+  } else if (action === "maj-dlc-champ") {
+    const d = state.dlcs.find((x) => x.uid === Number(el.dataset.dlc));
+    if (!d) return;
+    d[el.dataset.champ] = el.dataset.champ === "code" ? el.value.toUpperCase() : el.value;
+  }
+}
+racine.addEventListener("input", gererSaisie);
+racine.addEventListener("change", gererSaisie);
+racine.addEventListener("focusout", (e) => { if (e.target.dataset && e.target.dataset.action && e.target.dataset.action !== "maj-rarite-nom" && e.target.id !== "gc-code") render(); });
+
+/* =====================================================================
+   INITIALISATION
+   ===================================================================== */
+
+codeTexte = genererCode();
+render();
+
+})();
+</script>
+</body>
+</html>
