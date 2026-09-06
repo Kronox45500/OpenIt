@@ -1318,11 +1318,11 @@ function niveauEffectifDeblocage() {
 }
 
 const CHEATS = {
-  INFINITEGOLD: {
+  qesf65d65f1qsef564INFINITEGOLDqef56sdqfqsef5461: {
     description: "Argent illimité",
     appliquer: () => { state.or += 999999999; state.stats.orGagneTotal += 999999999; },
   },
-  FULLCOLLECTION: {
+  zqef65d65fqe654f4FULLCOLLECTIONqzef65d5c5sqe54f: {
     description: "Tous les objets débloqués",
     appliquer: () => {
       DLC_PACKS.forEach((d) => {
@@ -1336,11 +1336,11 @@ const CHEATS = {
       });
     },
   },
-  INFINITEBOXES: {
+  dsv4q53se5f6INFINITEBOXESyuk5465g64h5sd5: {
     description: "Boîtes infinies",
     appliquer: () => { Object.keys(BOITES_PAR_ID).forEach((id) => { state.boites[id] = 999999; }); },
   },
-  ALLDLC: {
+  zqefd24f4z54efALLDLCzqef54qds5fqz5ef: {
     description: "Tous les DLC débloqués",
     appliquer: () => {
       DLC_PACKS.forEach((d) => {
@@ -1351,7 +1351,7 @@ const CHEATS = {
       });
     },
   },
-  ALLACHIEVEMENTS: {
+  s54ef54qze24sf15d5ALLACHIEVEMENTSzqed54q5e4fq54ef54: {
     description: "Tous les succès débloqués",
     appliquer: () => {
       SUCCES.forEach((s) => {
@@ -1363,7 +1363,7 @@ const CHEATS = {
       });
     },
   },
-  LEVEL9999999: {
+  qzd54s5q54z85d85dLEVEL9999999trgesq465r5azzef: {
     description: "Niveau 9 999 999 atteint",
     appliquer: () => {
       const niveau = 9999999;
@@ -1371,11 +1371,11 @@ const CHEATS = {
       state.stats.meilleurNiveauAtteint = Math.max(state.stats.meilleurNiveauAtteint || 0, niveau);
     },
   },
-  PRESTIGE9999999: {
+  qzdsd85q54zdPRESTIGE9999999qzd46s4dq54z45d: {
     description: "Prestige 9 999 999 atteint",
     appliquer: () => { state.prestige = Math.max(state.prestige || 0, 9999999); },
   },
-  ALLCHEATS: {
+  qzdqzd1535xqz1ALLCHEATSqzd6sd84qz332: {
     description: "Tous les cheats activés",
     appliquer: () => {
       Object.entries(CHEATS).forEach(([code, cheat]) => {
