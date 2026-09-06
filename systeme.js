@@ -540,11 +540,6 @@ function tickAutomatisation() {
   else renderHeader();
 }
 
-function prixRevente(box, qte, possede) {
-  if (!possede || !qte) return 0;
-  const coutTotal = state.coutsBoites[box.id] || possede * prixBoite(box);
-  return Math.floor((coutTotal / possede) * 0.7) * qte;
-}
 function boitesDisponibles() {
   const dispo = [...BOITES_DE_BASE];
   DLC_PACKS.forEach((dlc) => { if (state.dlcDebloques.includes(dlc.id)) dispo.push(...(dlc.boites || [])); });
@@ -797,8 +792,6 @@ function construireSucces() {
 
   liste.push({ id: "achat_50", titre: "Client régulier", description: "Achète 50 boîtes au total.", recompense: 150, condition: () => (state.stats.boitesAcheteesTotal || 0) >= 50 });
   liste.push({ id: "achat_500", titre: "Client VIP", description: "Achète 500 boîtes au total.", recompense: 1200, condition: () => (state.stats.boitesAcheteesTotal || 0) >= 500 });
-  liste.push({ id: "vente_10", titre: "Petit commerce", description: "Revends 10 boîtes au total.", recompense: 80, condition: () => (state.stats.boitesVenduesTotal || 0) >= 10 });
-  liste.push({ id: "vente_50", titre: "Marchand aguerri", description: "Revends 50 boîtes au total.", recompense: 400, condition: () => (state.stats.boitesVenduesTotal || 0) >= 50 });
 
   if (DLC_PACKS.length > 0) {
     liste.push({ id: "dlc_premier", titre: "Nouveaux horizons", description: "Débloque ton premier DLC.", recompense: 100, condition: () => state.dlcDebloques.length >= 1 });
@@ -1071,7 +1064,7 @@ function afficherAnimationRankUp(niveau, rangObjet) {
 
 /* =====================================================================
    ANNONCE DE DÉBLOCAGE — même traitement visuel que le passage de rang,
-   pour les déblocages de fonctionnalités (onglets, revente...). Mise en
+  pour les déblocages de fonctionnalités (onglets...). Mise en
    file d'attente : si plusieurs déblocages tombent en même temps, ils
    s'affichent l'un après l'autre plutôt que de se chevaucher.
    ===================================================================== */
@@ -1291,7 +1284,6 @@ function niveauPourXp(xp) {
 const DEBLOCAGES_NIVEAU = {
   missions: 3,
   ameliorations: 5,
-  revente: 4,
   succes: 4,
   fusion: 6,
   dlc: 7,
@@ -1303,7 +1295,6 @@ const DEBLOCAGES_NIVEAU = {
 const LABELS_DEBLOCAGE = {
   missions: "L'onglet Missions",
   ameliorations: "L'onglet Améliorations",
-  revente: "La revente de boîtes",
   succes: "L'onglet Succès",
   fusion: "L'onglet Fusion",
   dlc: "L'onglet DLC",
@@ -1318,11 +1309,11 @@ function niveauEffectifDeblocage() {
 }
 
 const CHEATS = {
-  qesf65d65f1qsef564INFINITEGOLDqef56sdqfqsef5461: {
+  A7KINFINITEGOLDA7K: {
     description: "Argent illimité",
     appliquer: () => { state.or += 999999999; state.stats.orGagneTotal += 999999999; },
   },
-  zqef65d65fqe654f4FULLCOLLECTIONqzef65d5c5sqe54f: {
+  M2QFULLCOLLECTIONM2Q: {
     description: "Tous les objets débloqués",
     appliquer: () => {
       DLC_PACKS.forEach((d) => {
@@ -1336,11 +1327,11 @@ const CHEATS = {
       });
     },
   },
-  dsv4q53se5f6INFINITEBOXESyuk5465g64h5sd5: {
+  R8VINFINITEBOXESR8V: {
     description: "Boîtes infinies",
     appliquer: () => { Object.keys(BOITES_PAR_ID).forEach((id) => { state.boites[id] = 999999; }); },
   },
-  zqefd24f4z54efALLDLCzqef54qds5fqz5ef: {
+  C5JALLDLCC5J: {
     description: "Tous les DLC débloqués",
     appliquer: () => {
       DLC_PACKS.forEach((d) => {
@@ -1351,7 +1342,7 @@ const CHEATS = {
       });
     },
   },
-  s54ef54qze24sf15d5ALLACHIEVEMENTSzqed54q5e4fq54ef54: {
+  N4BALLACHIEVEMENTSN4B: {
     description: "Tous les succès débloqués",
     appliquer: () => {
       SUCCES.forEach((s) => {
@@ -1363,7 +1354,7 @@ const CHEATS = {
       });
     },
   },
-  qzd54s5q54z85d85dLEVEL9999999trgesq465r5azzef: {
+  Y9TLEVEL9999999Y9T: {
     description: "Niveau 9 999 999 atteint",
     appliquer: () => {
       const niveau = 9999999;
@@ -1371,15 +1362,15 @@ const CHEATS = {
       state.stats.meilleurNiveauAtteint = Math.max(state.stats.meilleurNiveauAtteint || 0, niveau);
     },
   },
-  qzdsd85q54zdPRESTIGE9999999qzd46s4dq54z45d: {
+  D6FPRESTIGE9999999D6F: {
     description: "Prestige 9 999 999 atteint",
     appliquer: () => { state.prestige = Math.max(state.prestige || 0, 9999999); },
   },
-  qzdqzd1535xqz1ALLCHEATSqzd6sd84qz332: {
+  L2SALLCHEATSL2S: {
     description: "Tous les cheats activés",
     appliquer: () => {
-      Object.entries(CHEATS).forEach(([code, cheat]) => {
-        if (code !== "ALLCHEATS") cheat.appliquer();
+      Object.values(CHEATS).forEach((cheat) => {
+        if (cheat !== CHEATS.L2SALLCHEATSL2S) cheat.appliquer();
       });
     },
   },
@@ -1610,8 +1601,6 @@ function boiteDebloqueeParNiveau(box) {
 function renderBoutique() {
   const categories = categoriesBoites();
   if (!categories.length) return `<div class="bc-empty">Aucune boîte disponible.</div>`;
-  const revendreDebloquee = niveauEffectifDeblocage() >= DEBLOCAGES_NIVEAU.revente;
-
   const carteBoite = (box) => {
     if (!boiteDebloqueeParNiveau(box)) {
       const raison = box.prestigeRequis && (state.prestige || 0) < box.prestigeRequis
@@ -1631,9 +1620,6 @@ function renderBoutique() {
       remise() > 0
         ? `<span class="bc-price-old">${box.prix} or</span><span class="bc-price">${prix} or</span>`
         : `<span class="bc-price">${prix} or</span>`;
-    const boutonRevente = revendreDebloquee
-      ? `<button class="bc-btn bc-btn-fantome" data-action="vendre" data-box="${box.id}" ${owned < 1 ? "disabled" : ""}>Revendre (${prixRevente(box, Math.min(qte, owned), owned)} or)</button>`
-      : "";
     return `
     <div class="bc-card" style="--bc-mat:${box.matiere}">
       <p class="bc-card-nom">${escHtml(box.nom)}</p>
@@ -1649,7 +1635,6 @@ function renderBoutique() {
         <button class="bc-step-max" data-action="qte-max-achat" data-box="${box.id}">max</button>
       </div>
       <button class="bc-btn bc-btn-plein" data-action="acheter" data-box="${box.id}">Acheter (${total} or)</button>
-      ${boutonRevente}
       <div class="bc-msg" id="msg-shop-${box.id}"></div>
     </div>`;
   };
@@ -1998,7 +1983,7 @@ function renderDlc() {
     ${sectionBonus}
     <p style="font-size:13px;color:var(--bc-text-dim);margin:0 0 8px;">Entre un code pour débloquer un DLC.</p>
     <div class="bc-code-row">
-      <input type="text" id="champ-code" placeholder="CODE2026" maxlength="20">
+      <input type="text" id="champ-code" placeholder="CODE2026" maxlength="32">
       <button class="bc-btn bc-btn-plein bc-btn-petit" data-action="activer-dlc">Activer</button>
     </div>
     <div class="bc-msg" id="msg-dlc"></div>
@@ -2030,7 +2015,6 @@ function renderStatistiques() {
         ["Or actuel", formaterNombre(state.or)],
         ["Or total gagné", formaterNombre(state.stats.orGagneTotal)],
         ["Boîtes achetées", formaterNombre(state.stats.boitesAcheteesTotal || 0)],
-        ["Boîtes vendues", formaterNombre(state.stats.boitesVenduesTotal || 0)],
       ],
     },
     {
@@ -2509,24 +2493,6 @@ racine.addEventListener("click", (e) => {
     render();
     return;
   }
-  if (action === "vendre") {
-    const box = BOITES_PAR_ID[el.dataset.box];
-    const possede = state.boites[box.id] || 0;
-    const qte = Math.min(ui.qte["shop:" + box.id] || 1, possede);
-    if (qte < 1) return;
-    const coutTotal = state.coutsBoites[box.id] || possede * prixBoite(box);
-    const remboursement = prixRevente(box, qte, possede);
-    state.boites[box.id] -= qte;
-    state.boitesAchetees[box.id] = Math.max(0, (state.boitesAchetees[box.id] || 0) - qte);
-    state.coutsBoites[box.id] = Math.max(0, coutTotal - (coutTotal / possede) * qte);
-    state.or += remboursement;
-    state.stats.boitesVenduesTotal = (state.stats.boitesVenduesTotal || 0) + qte;
-    sauvegarder();
-    afficherToast(`-${qte} × ${box.nom} : +${formaterNombre(remboursement)} or`);
-    verifierSuccesCaches();
-    render();
-    return;
-  }
   if (action === "choisir-ouvrir") {
     ui.ouvrirDetail = el.dataset.box;
     if (!ui.qte["open:" + ui.ouvrirDetail]) ui.qte["open:" + ui.ouvrirDetail] = 1;
@@ -2767,7 +2733,7 @@ racine.addEventListener("input", (e) => {
 
 /* Le champ de quantité ne redessine pas à chaque frappe (pour ne pas perdre
    le focus/curseur en pleine saisie) : on rafraîchit juste les totaux
-   affichés (prix, revente...) une fois que l'utilisateur quitte le champ. */
+  affichés (prix...) une fois que l'utilisateur quitte le champ. */
 racine.addEventListener("blur", (e) => {
   if (e.target && e.target.dataset && e.target.dataset.action === "qte-saisie") render();
 }, true);

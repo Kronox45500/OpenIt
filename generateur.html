@@ -142,6 +142,12 @@ function escAttr(s) {
 }
 function escHtml(s) { return escAttr(s); }
 function jsStr(s) { return JSON.stringify(String(s == null ? "" : s)); }
+function salerCode(code) {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let salt = "";
+  for (let i = 0; i < 3; i++) salt += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return salt + String(code).toUpperCase() + salt;
+}
 
 let PROCHAIN_UID = 1;
 function nouvelUid() { return PROCHAIN_UID++; }
@@ -186,7 +192,7 @@ function etatParDefaut() {
   ];
 
   const dlcs = [
-    { uid: nouvelUid(), nom: "Pack DLC : Glace", code: "ICEDLC2026", boites: [
+    { uid: nouvelUid(), nom: "Pack DLC : Glace", code: "Q8FICEDLC2026Q8F", boites: [
       creerBoite("Boîte de Glace", 100, "#7fd8e0", [
         creerItem("Flocon éternel", uidPar("Basique")),
         creerItem("Épée de givre", uidPar("Peu rare")),
@@ -194,7 +200,7 @@ function etatParDefaut() {
         creerItem("Phénix des glaces", uidPar("Légendaire")),
       ]),
     ] },
-    { uid: nouvelUid(), nom: "Pack DLC : Volcan", code: "VOLCANDLC2026", boites: [
+    { uid: nouvelUid(), nom: "Pack DLC : Volcan", code: "W3KVOLCANDLC2026W3K", boites: [
       creerBoite("Boîte de Volcan", 100, "#e0623f", [
         creerItem("Braise ardente", uidPar("Basique")),
         creerItem("Hache de magma", uidPar("Peu rare")),
@@ -677,7 +683,7 @@ racine.addEventListener("click", (e) => {
   }
 
   if (action === "ajouter-dlc") {
-    state.dlcs.push({ uid: nouvelUid(), nom: "Nouveau DLC", code: "CODE" + Math.floor(1000 + Math.random() * 9000), boites: [nouvelleBoite()] });
+    state.dlcs.push({ uid: nouvelUid(), nom: "Nouveau DLC", code: salerCode("CODE" + Math.floor(1000 + Math.random() * 9000)), boites: [nouvelleBoite()] });
     render();
     return;
   }

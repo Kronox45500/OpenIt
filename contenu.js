@@ -388,7 +388,7 @@ const BOITES_DE_BASE = [
 const DLC_PACKS = [
   {
     nom: "DLC I — LES TERRES GELÉES",
-    code: "qzd41sd5c546v54dLTGDLC12026sqef35c5x3v45sqe4f45",
+    code: "K4NLTGDLC12026K4N",
     boites: [
       {
         nom: "Coffre du Givre",
@@ -424,7 +424,7 @@ const DLC_PACKS = [
   },
   {
     nom: "DLC II — LE ROYAUME DES CENDRES",
-    code: "esf4u4fg554y54qerpmoLRDCDLC22026qsef44jhy6841ed350",
+    code: "R8CLRDCDLC22026R8C",
     boites: [
       {
         nom: "Coffre du Volcan",
@@ -460,7 +460,7 @@ const DLC_PACKS = [
   },
   {
     nom: "DLC III — LES ABYSSES",
-    code: "4fegr5465qf465grLADLC32026b4cvs4dge654q465",
+    code: "V2JLADLC32026V2J",
     boites: [
       {
         nom: "Coffre des Abysses",
@@ -496,7 +496,7 @@ const DLC_PACKS = [
   },
   {
     nom: "DLC IV — LES OMBRES",
-    code: "qf54864qz6851gb0f50fLODLC42026qse64f564tg6465454f6q",
+    code: "P9XLODLC42026P9X",
     boites: [
       {
         nom: "Coffre des Ombres",
@@ -532,7 +532,7 @@ const DLC_PACKS = [
   },
   {
     nom: "DLC V — PACK IMPÉRIAL",
-    code: "dgrs654645fqez65486s685IMPERIALDLC2026dgs684hdjy465ol648654fdg",
+    code: "H6QIMPERIALDLC2026H6Q",
     boites: [
       {
         nom: "Trésor de l'Empereur Déchu",
@@ -567,7 +567,7 @@ const DLC_PACKS = [
 
   {
     nom: "DLC VI — PERSONNALISATION",
-    code: "4d5fh41gchn414s655s6dj654d564654PERSODLC2026755serg54egr41jkl5440",
+    code: "T3WPERSODLC2026T3W",
     boites: [],
     themes: [
       {

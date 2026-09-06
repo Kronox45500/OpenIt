@@ -15,7 +15,6 @@
      etat.or                    — or actuel du joueur
      etat.orGagneTotal          — or gagné cumulé depuis le début
      etat.boitesOuvertesTotal   — nombre de boîtes ouvertes au total
-     etat.boitesVenduesTotal    — nombre de boîtes revendues au total
      etat.fusionsTotal          — nombre de fusions réalisées
      etat.cheatsUtilises        — nombre de codes de triche activés
      etat.exemplairesMaxUnItem  — le plus grand nombre de copies détenu
@@ -35,11 +34,6 @@
    ===================================================================== */
 
 const SUCCES_CACHES = [
-  {
-    titre: "Petit vendeur",
-    commentaire: "Pourquoi en acheter autant pour les revendre moins cher...",
-    condition: (etat) => etat.boitesVenduesTotal >= 100,
-  },
   {
     titre: "Écureuil compulsif",
     commentaire: "Pense au bouton fusionner.",
