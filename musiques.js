@@ -14,6 +14,10 @@
    ===================================================================== */
 
 const MUSIQUES = [
-  { titre: "Piste 1", fichier: "musiques/A_song_for_a_game_10.mp3" },
+  { titre: "Piste 1", fichier: "musiques/musique1.mp3" },
+  { titre: "Piste 2", fichier: "musiques/musique2.mp3" },
+  { titre: "Piste 3", fichier: "musiques/musique3.mp3" },
+  { titre: "Piste 4", fichier: "musiques/musique4.mp3" },
+  { titre: "Piste 5", fichier: "musiques/musique5.mp3" },
   // Ajoute d'autres pistes ici, sur le même modèle.
 ];
