@@ -235,6 +235,7 @@ function nouvelEtat() {
     volumeMusique: 40,
     pseudo: null,
     idJoueurClassement: null,
+    notificationsChatCoupees: false,
     derniereMaj: Date.now(),
   };
 }
@@ -1289,6 +1290,7 @@ const DEBLOCAGES_NIVEAU = {
   dlc: 7,
   stats: 9,
   classement: 9,
+  chat: 5,
   prestige: 15,
 };
 
@@ -1300,6 +1302,7 @@ const LABELS_DEBLOCAGE = {
   dlc: "L'onglet DLC",
   stats: "L'onglet Statistiques",
   classement: "L'onglet Classement",
+  chat: "L'onglet Chat",
   prestige: "L'onglet Prestige",
 };
 
@@ -1381,62 +1384,153 @@ const CHEATS = {
    cliquant sur le bouton d'aide ("?") dans l'en-tête.
    ===================================================================== */
 
-const TUTORIEL_SLIDES = [
+const ETAPES_VISITE = [
   {
-    titre: "Bienvenue dans Open It",
-    texte: "Un jeu de collection où l'or tombe tout seul, seconde après seconde. Ouvre des boîtes, complète ta collection, et laisse-toi surprendre par ce que tu trouveras.",
+    selecteur: ".bc-header-gauche",
+    titre: "Bienvenue dans Open It !",
+    texte: "Cette visite va te montrer les bases, étape par étape. Les éléments surlignés en doré sont ceux à utiliser : clique dessus pour avancer, ou utilise le bouton Suivant.",
   },
   {
-    titre: "Boutique & Ouverture",
-    texte: "Achète des boîtes dans l'onglet Boutique avec ton or. File ensuite dans l'onglet Ouvrir pour les déballer : chaque ouverture lance une petite roulette façon casino avant de révéler ton objet.",
+    selecteur: '[data-tab="boutique"]',
+    titre: "La Boutique",
+    texte: "C'est ici que tu achètes des boîtes avec ton or. Clique sur cet onglet pour l'ouvrir.",
+    attendAction: { action: "tab", tab: "boutique" },
   },
   {
-    titre: "Collection & Fusion",
-    texte: "L'onglet Collection garde une trace de tout ce que tu as trouvé. Trop de doublons d'un même objet ? L'onglet Fusion permet d'en sacrifier plusieurs pour tenter d'obtenir un objet plus rare.",
+    selecteur: ".bc-grid .bc-card:not(.bc-card-verrouillee) .bc-btn-plein",
+    titre: "Achète ta première boîte",
+    texte: "Clique sur \"Acheter\" pour obtenir ta toute première boîte.",
+    attendAction: { action: "acheter" },
   },
   {
-    titre: "Missions & Succès",
-    texte: "Des objectifs se renouvellent sans arrêt dans l'onglet Missions. L'onglet Succès garde lui une trace permanente de tes exploits, chacun ajoutant un petit bonus de revenu qui dure pour toujours.",
+    selecteur: '[data-tab="ouvrir"]',
+    titre: "L'onglet Ouvrir",
+    texte: "Une fois une boîte achetée, viens la déballer ici. Clique sur cet onglet.",
+    attendAction: { action: "tab", tab: "ouvrir" },
   },
   {
-    titre: "Niveau & Rang",
-    texte: "Presque tout ce que tu fais te rapporte de l'XP. Clique n'importe quand sur la barre de niveau, en haut, pour voir ton rang en grand.",
+    selecteur: '#bc-content .bc-btn-plein[data-action="ouvrir"]',
+    titre: "Ouvre ta boîte",
+    texte: "Clique sur \"Ouvrir\" pour lancer la roulette et découvrir ton premier objet !",
+    attendAction: { action: "ouvrir" },
   },
   {
+    selecteur: "#bc-niveau-bar",
+    titre: "Ta progression",
+    texte: "Presque tout ce que tu fais donne de l'XP. En montant de niveau, tu débloques de nouvelles fonctionnalités et boîtes. Clique ici à tout moment pour voir ton rang en détail.",
+  },
+  {
+    selecteur: '[data-tab="collection"]',
+    titre: "Ta collection",
+    texte: "Tous les objets que tu obtiens s'enregistrent ici pour toujours. Clique sur cet onglet pour y jeter un œil.",
+    attendAction: { action: "tab", tab: "collection" },
+  },
+  {
+    selecteur: ".bc-side-box",
     titre: "Le petit plus",
-    texte: "Le panneau à droite regroupe le journal des mises à jour, des cheats secrets du dev, et des succès cachés à découvrir par toi-même. Et si besoin, tu peux exporter ta sauvegarde dans un fichier depuis ce même panneau.",
+    texte: "Le panneau à droite regroupe le journal des mises à jour, des cheats secrets du dev et des succès cachés. Tu peux aussi y exporter ta sauvegarde dans un fichier.",
+  },
+  {
+    selecteur: ".bc-header-gauche",
+    titre: "À toi de jouer !",
+    texte: "Missions, Succès, Fusion, Améliorations, DLC, Prestige... tu débloqueras le reste en progressant. Tu peux revoir cette visite à tout moment via le bouton \"?\" en haut.",
   },
 ];
 
-let tutoIndex = 0;
+let etapeVisiteActuelle = 0;
 
-function renderTutoriel() {
-  const corps = document.getElementById("bc-tuto-corps");
-  const dots = document.getElementById("bc-tuto-dots");
-  const btnPrec = document.getElementById("bc-tuto-btn-prec");
-  const btnSuiv = document.getElementById("bc-tuto-btn-suiv");
-  if (!corps || !dots || !btnPrec || !btnSuiv) return;
-  const slide = TUTORIEL_SLIDES[tutoIndex];
-  corps.innerHTML = `<h2 class="bc-tuto-titre">${escHtml(slide.titre)}</h2><p class="bc-tuto-texte">${escHtml(slide.texte)}</p>`;
-  dots.innerHTML = TUTORIEL_SLIDES.map((_, i) => `<span class="bc-tuto-dot ${i === tutoIndex ? "actif" : ""}"></span>`).join("");
-  btnPrec.style.visibility = tutoIndex === 0 ? "hidden" : "visible";
-  btnSuiv.textContent = tutoIndex === TUTORIEL_SLIDES.length - 1 ? "Commencer à jouer" : "Suivant";
+function visiteEnCours() {
+  const overlay = document.getElementById("bc-visite");
+  return !!overlay && overlay.classList.contains("bc-visible");
 }
 
 function ouvrirTutoriel() {
-  tutoIndex = 0;
-  renderTutoriel();
-  const overlay = document.getElementById("bc-tuto-overlay");
+  etapeVisiteActuelle = 0;
+  const overlay = document.getElementById("bc-visite");
   if (overlay) overlay.classList.add("bc-visible");
+  afficherEtapeVisite();
 }
 
 function fermerTutoriel() {
-  const overlay = document.getElementById("bc-tuto-overlay");
+  const overlay = document.getElementById("bc-visite");
   if (overlay) overlay.classList.remove("bc-visible");
   if (!state.tutorielVu) {
     state.tutorielVu = true;
     sauvegarder();
   }
+}
+
+function afficherEtapeVisite() {
+  const etape = ETAPES_VISITE[etapeVisiteActuelle];
+  if (!etape) {
+    fermerTutoriel();
+    return;
+  }
+  const cible = document.querySelector(etape.selecteur);
+  if (!cible) {
+    // La cible n'existe pas dans l'état actuel du jeu (ex: aucune boîte
+    // possédée) : on saute cette étape plutôt que de bloquer la visite.
+    etapeVisiteActuelle++;
+    afficherEtapeVisite();
+    return;
+  }
+  cible.scrollIntoView({ behavior: "smooth", block: "center" });
+  setTimeout(() => positionnerVisite(cible, etape), 280);
+}
+
+function positionnerVisite(cible, etape) {
+  const rect = cible.getBoundingClientRect();
+  const marge = 6;
+
+  const zone = (id, css) => { const el = document.getElementById(id); if (el) el.style.cssText = css; };
+  zone("bc-visite-haut", `top:0; left:0; right:0; height:${Math.max(0, rect.top - marge)}px;`);
+  zone("bc-visite-bas", `top:${rect.bottom + marge}px; left:0; right:0; bottom:0;`);
+  zone("bc-visite-gauche", `top:${rect.top - marge}px; left:0; width:${Math.max(0, rect.left - marge)}px; height:${rect.height + marge * 2}px;`);
+  zone("bc-visite-droite", `top:${rect.top - marge}px; left:${rect.right + marge}px; right:0; height:${rect.height + marge * 2}px;`);
+  zone("bc-visite-cadre", `top:${rect.top - marge}px; left:${rect.left - marge}px; width:${rect.width + marge * 2}px; height:${rect.height + marge * 2}px;`);
+
+  document.getElementById("bc-visite-titre").textContent = etape.titre;
+  document.getElementById("bc-visite-texte").textContent = etape.texte;
+  document.getElementById("bc-visite-indice").textContent = etape.attendAction ? "👉 Clique sur l'élément surligné pour continuer" : "";
+  document.getElementById("bc-visite-btn-suivant").textContent = etapeVisiteActuelle === ETAPES_VISITE.length - 1 ? "Terminer" : "Suivant";
+
+  const bulle = document.getElementById("bc-visite-bulle");
+  const largeurBulle = 280;
+  const hauteurBulleEstimee = 200; // estimation prudente, jamais mesurée précisément mais suffit à rester dans l'écran
+  const gauche = Math.min(Math.max(rect.left, 10), window.innerWidth - largeurBulle - 10);
+
+  const placeEnBas = window.innerHeight - rect.bottom;
+  const placeEnHaut = rect.top;
+  let haut;
+  if (placeEnBas >= hauteurBulleEstimee + 14) {
+    haut = rect.bottom + 14;
+  } else if (placeEnHaut >= hauteurBulleEstimee + 14) {
+    haut = rect.top - hauteurBulleEstimee - 14;
+  } else {
+    // Ni au-dessus ni en dessous ne suffit (cible trop grande, ex: le panneau
+    // latéral entier) : on centre la bulle verticalement, toujours dans les
+    // limites visibles de l'écran — jamais hors-champ.
+    haut = (window.innerHeight - hauteurBulleEstimee) / 2;
+  }
+  haut = Math.max(10, Math.min(haut, window.innerHeight - hauteurBulleEstimee - 10));
+  bulle.style.cssText = `top:${haut}px; left:${gauche}px;`;
+}
+
+function visiteEtapeSuivante() {
+  etapeVisiteActuelle++;
+  afficherEtapeVisite();
+}
+
+function verifierAvanceeVisite(action, el) {
+  if (!visiteEnCours()) return;
+  const etape = ETAPES_VISITE[etapeVisiteActuelle];
+  if (!etape || !etape.attendAction) return;
+  const attend = etape.attendAction;
+  if (attend.action !== action) return;
+  if (attend.tab && (!el || el.dataset.tab !== attend.tab)) return;
+  if (attend.box && (!el || el.dataset.box !== attend.box)) return;
+  etapeVisiteActuelle++;
+  setTimeout(afficherEtapeVisite, 400);
 }
 
 /* =====================================================================
@@ -1517,6 +1611,7 @@ const TABS = [
   { id: "stats", label: "Statistiques", render: renderStatistiques, debloquage: "stats" },
   { id: "prestige", label: "Prestige", render: renderPrestige, debloquage: "prestige" },
   { id: "classement", label: "Classement", render: renderClassement, debloquage: "classement" },
+  { id: "chat", label: "Chat", render: renderChat, debloquage: "chat" },
 ];
 
 function tabsVisibles() {
@@ -1540,6 +1635,8 @@ function renderContent() {
   const tab = visibles.find((t) => t.id === ui.tab) || visibles[0];
   document.getElementById("bc-content").innerHTML = tab.render();
   if (tab.id === "classement") chargerClassement();
+  if (tab.id === "chat") demarrerEcouteChat();
+  else arreterEcouteChat();
 }
 function feuilleDeRouteNiveaux() {
   const entrees = [];
@@ -2196,6 +2293,235 @@ function envoyerScore() {
 }
 
 /* =====================================================================
+   CHAT — utilise la même configuration Firebase que le classement (voir
+   classement.js). Messages diffusés en temps réel (écoute Firebase) entre
+   tous les joueurs présents sur l'onglet. Les mots interdits
+   (motsBannis.js) transforment tout le message en dièses avant même son
+   envoi. On peut modifier/supprimer ses propres messages (trace
+   visible), et un délai anti-spam limite la fréquence d'envoi.
+   ===================================================================== */
+
+let derniersMessagesChat = null; // null = jamais chargé
+let messageEnEditionChat = null;
+let dernierEnvoiChat = 0;
+const DELAI_ANTI_SPAM_CHAT_MS = 3000;
+let contexteAudioNotif = null;
+
+function chatConfigure() {
+  return classementConfigure();
+}
+
+function filtrerMessageChat(texte) {
+  const listeInterdits = typeof MOTS_BANNIS !== "undefined" && Array.isArray(MOTS_BANNIS) ? MOTS_BANNIS : [];
+  const texteBas = texte.toLowerCase();
+  const banni = listeInterdits.some((mot) => mot && texteBas.includes(String(mot).toLowerCase()));
+  return banni ? "#".repeat(texte.length) : texte;
+}
+
+function jouerSonNotificationChat() {
+  if (state.notificationsChatCoupees) return;
+  try {
+    if (!contexteAudioNotif) contexteAudioNotif = new (window.AudioContext || window.webkitAudioContext)();
+    if (contexteAudioNotif.state === "suspended") contexteAudioNotif.resume();
+    const maintenant = contexteAudioNotif.currentTime;
+    const osc = contexteAudioNotif.createOscillator();
+    const gain = contexteAudioNotif.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.0001, maintenant);
+    gain.gain.exponentialRampToValueAtTime(0.16, maintenant + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, maintenant + 0.35);
+    osc.connect(gain);
+    gain.connect(contexteAudioNotif.destination);
+    osc.start(maintenant);
+    osc.stop(maintenant + 0.36);
+  } catch (e) {
+    /* audio indisponible : tant pis, pas de son */
+  }
+}
+
+function renderChat() {
+  if (!chatConfigure()) {
+    return `<div class="bc-empty">Le chat n'est pas encore configuré (il utilise la même configuration Firebase que le classement, voir classement.js).</div>`;
+  }
+  return `
+    <div class="bc-row" style="margin-bottom:10px;">
+      <p class="bc-categorie-titre" style="margin:0;">Chat</p>
+      <button class="bc-icon-btn" data-action="basculer-notif-chat" title="Notifications sonores">${state.notificationsChatCoupees ? "🔕" : "🔔"}</button>
+    </div>
+    <div id="bc-chat-messages" class="bc-chat-messages">${rendreMessagesChat()}</div>
+    <div class="bc-code-row" style="margin-top:12px;">
+      <input type="text" id="champ-chat" placeholder="${state.pseudo ? "Ton message..." : "Choisis un pseudo dans l'onglet Classement d'abord"}" maxlength="200" ${state.pseudo ? "" : "disabled"}>
+      <button class="bc-btn bc-btn-plein bc-btn-petit" id="bc-chat-btn-envoyer" data-action="envoyer-chat" ${state.pseudo ? "" : "disabled"}>Envoyer</button>
+    </div>
+    <div class="bc-msg" id="msg-chat"></div>`;
+}
+
+function rendreMessagesChat() {
+  if (derniersMessagesChat === null) return `<p class="bc-empty">Chargement…</p>`;
+  if (!derniersMessagesChat.length) return `<p class="bc-empty">Aucun message pour l'instant. Lance la discussion !</p>`;
+  return derniersMessagesChat
+    .map((m) => {
+      if (m.id === messageEnEditionChat) {
+        return `
+        <div class="bc-chat-ligne">
+          <span class="bc-chat-pseudo">${escHtml(m.pseudo || "?")}</span>
+          <div class="bc-code-row" style="margin-top:4px;">
+            <input type="text" id="champ-edit-chat" value="${escAttr(m.texte || "")}" maxlength="200">
+            <button class="bc-btn bc-btn-plein bc-btn-petit" data-action="valider-edition-chat" data-id="${m.id}">OK</button>
+            <button class="bc-btn bc-btn-fantome bc-btn-petit" data-action="annuler-edition-chat">✕</button>
+          </div>
+        </div>`;
+      }
+      const estMoi = m.idJoueur && m.idJoueur === state.idJoueurClassement;
+      const texteAffiche = m.supprime
+        ? `🗑️ <i>Message supprimé</i>`
+        : escHtml(m.texte || "") + (m.modifie ? ` <span class="bc-chat-modifie">(modifié)</span>` : "");
+      const controles = estMoi && !m.supprime
+        ? `<span class="bc-chat-controles">
+            <button class="bc-lien" data-action="editer-chat" data-id="${m.id}">modifier</button>
+            <button class="bc-lien" data-action="supprimer-chat" data-id="${m.id}">supprimer</button>
+          </span>`
+        : "";
+      return `
+      <div class="bc-chat-ligne">
+        <span class="bc-chat-pseudo">${escHtml(m.pseudo || "?")}</span>
+        <span class="bc-chat-texte">${texteAffiche}</span>
+        ${controles}
+      </div>`;
+    })
+    .join("");
+}
+
+let ecouteurChatRef = null;
+let ecouteurChatFn = null;
+
+function demarrerEcouteChat() {
+  if (!chatConfigure() || !initialiserFirebase()) return;
+  arreterEcouteChat();
+  const requete = firebase.database().ref("chat").orderByChild("date").limitToLast(50);
+  ecouteurChatFn = (snapshot) => {
+    const donnees = snapshot.val() || {};
+    const nouvellesEntrees = Object.entries(donnees).map(([id, val]) => ({ id, ...val }));
+    nouvellesEntrees.sort((a, b) => (a.date || 0) - (b.date || 0));
+
+    const premierChargement = derniersMessagesChat === null;
+    const idsConnus = new Set((derniersMessagesChat || []).map((m) => m.id));
+    const nouveauxMessages = nouvellesEntrees.filter((m) => !idsConnus.has(m.id));
+    const nouveauDautrui = !premierChargement && nouveauxMessages.some((m) => m.idJoueur !== state.idJoueurClassement);
+    if (nouveauDautrui) jouerSonNotificationChat();
+
+    derniersMessagesChat = nouvellesEntrees;
+    const zone = document.getElementById("bc-chat-messages");
+    if (zone) {
+      zone.innerHTML = rendreMessagesChat();
+      zone.scrollTop = zone.scrollHeight;
+    }
+  };
+  requete.on("value", ecouteurChatFn);
+  ecouteurChatRef = requete;
+}
+
+function arreterEcouteChat() {
+  if (ecouteurChatRef && ecouteurChatFn) ecouteurChatRef.off("value", ecouteurChatFn);
+  ecouteurChatRef = null;
+  ecouteurChatFn = null;
+}
+
+function demarrerCompteAReboursEnvoiChat() {
+  const miseAJour = () => {
+    const btn = document.getElementById("bc-chat-btn-envoyer");
+    if (!btn) return;
+    const restant = Math.ceil((DELAI_ANTI_SPAM_CHAT_MS - (Date.now() - dernierEnvoiChat)) / 1000);
+    if (restant > 0) {
+      btn.disabled = true;
+      btn.textContent = `Envoyer (${restant}s)`;
+      setTimeout(miseAJour, 400);
+    } else {
+      btn.disabled = false;
+      btn.textContent = "Envoyer";
+    }
+  };
+  miseAJour();
+}
+
+function envoyerMessageChat() {
+  const champ = document.getElementById("champ-chat");
+  const msgEl = document.getElementById("msg-chat");
+  if (!champ) return;
+  const texteBrut = (champ.value || "").trim();
+  if (!texteBrut) return;
+  if (!state.pseudo) {
+    msgEl.textContent = "Choisis d'abord un pseudo dans l'onglet Classement.";
+    msgEl.className = "bc-msg bc-msg-err";
+    return;
+  }
+  if (!chatConfigure() || !initialiserFirebase()) {
+    msgEl.textContent = "Le chat n'est pas configuré.";
+    msgEl.className = "bc-msg bc-msg-err";
+    return;
+  }
+  const attente = DELAI_ANTI_SPAM_CHAT_MS - (Date.now() - dernierEnvoiChat);
+  if (attente > 0) {
+    msgEl.textContent = `Attends encore ${Math.ceil(attente / 1000)}s avant d'envoyer un nouveau message.`;
+    msgEl.className = "bc-msg bc-msg-err";
+    return;
+  }
+  const texte = filtrerMessageChat(texteBrut.slice(0, 200));
+  firebase
+    .database()
+    .ref("chat")
+    .push({ idJoueur: idJoueurClassement(), pseudo: state.pseudo, texte, date: Date.now(), modifie: false, supprime: false })
+    .then(() => {
+      dernierEnvoiChat = Date.now();
+      champ.value = "";
+      msgEl.textContent = "";
+      demarrerCompteAReboursEnvoiChat();
+    })
+    .catch((e) => {
+      msgEl.textContent = "Échec de l'envoi (" + (e.message || "erreur") + ").";
+      msgEl.className = "bc-msg bc-msg-err";
+    });
+}
+
+function editerMessageChat(id) {
+  messageEnEditionChat = id;
+  const zone = document.getElementById("bc-chat-messages");
+  if (zone) zone.innerHTML = rendreMessagesChat();
+}
+
+function annulerEditionChat() {
+  messageEnEditionChat = null;
+  const zone = document.getElementById("bc-chat-messages");
+  if (zone) zone.innerHTML = rendreMessagesChat();
+}
+
+function validerEditionChat(id) {
+  const champ = document.getElementById("champ-edit-chat");
+  if (!champ) return;
+  const nouveauTexteBrut = (champ.value || "").trim();
+  messageEnEditionChat = null;
+  if (!nouveauTexteBrut || !chatConfigure() || !initialiserFirebase()) {
+    const zone = document.getElementById("bc-chat-messages");
+    if (zone) zone.innerHTML = rendreMessagesChat();
+    return;
+  }
+  const nouveauTexte = filtrerMessageChat(nouveauTexteBrut.slice(0, 200));
+  firebase
+    .database()
+    .ref("chat/" + id)
+    .update({ texte: nouveauTexte, modifie: true });
+}
+
+function supprimerMessageChat(id) {
+  if (!chatConfigure() || !initialiserFirebase()) return;
+  firebase
+    .database()
+    .ref("chat/" + id)
+    .update({ texte: "", supprime: true });
+}
+
+/* =====================================================================
    8. ANIMATION — ROULETTE DE CASINO
    ===================================================================== */
 
@@ -2442,6 +2768,8 @@ racine.addEventListener("click", (e) => {
   if (!el || el.disabled) return;
   const action = el.dataset.action;
 
+  verifierAvanceeVisite(action, el);
+
   if (action === "tab") {
     ui.tab = el.dataset.tab;
     render();
@@ -2608,6 +2936,32 @@ racine.addEventListener("click", (e) => {
     chargerClassement();
     return;
   }
+  if (action === "envoyer-chat") {
+    envoyerMessageChat();
+    return;
+  }
+  if (action === "editer-chat") {
+    editerMessageChat(el.dataset.id);
+    return;
+  }
+  if (action === "annuler-edition-chat") {
+    annulerEditionChat();
+    return;
+  }
+  if (action === "valider-edition-chat") {
+    validerEditionChat(el.dataset.id);
+    return;
+  }
+  if (action === "supprimer-chat") {
+    supprimerMessageChat(el.dataset.id);
+    return;
+  }
+  if (action === "basculer-notif-chat") {
+    state.notificationsChatCoupees = !state.notificationsChatCoupees;
+    sauvegarder();
+    render();
+    return;
+  }
   if (action === "activer-theme") {
     state.themeActif = el.dataset.theme || null;
     appliquerApparence();
@@ -2648,18 +3002,12 @@ racine.addEventListener("click", (e) => {
     ouvrirTutoriel();
     return;
   }
-  if (action === "tuto-fermer") {
+  if (action === "visite-passer") {
     fermerTutoriel();
     return;
   }
-  if (action === "tuto-suivant") {
-    if (tutoIndex >= TUTORIEL_SLIDES.length - 1) { fermerTutoriel(); return; }
-    tutoIndex++;
-    renderTutoriel();
-    return;
-  }
-  if (action === "tuto-precedent") {
-    if (tutoIndex > 0) { tutoIndex--; renderTutoriel(); }
+  if (action === "visite-suivant") {
+    visiteEtapeSuivante();
     return;
   }
   if (action === "exporter-save") {
@@ -2748,6 +3096,14 @@ racine.addEventListener("keydown", (e) => {
   }
   if (e.target && e.target.id === "champ-cheat" && e.key === "Enter") {
     const btn = racine.querySelector('[data-action="activer-cheat"]');
+    if (btn) btn.click();
+  }
+  if (e.target && e.target.id === "champ-chat" && e.key === "Enter") {
+    const btn = racine.querySelector('[data-action="envoyer-chat"]');
+    if (btn) btn.click();
+  }
+  if (e.target && e.target.id === "champ-edit-chat" && e.key === "Enter") {
+    const btn = racine.querySelector('[data-action="valider-edition-chat"]');
     if (btn) btn.click();
   }
 });

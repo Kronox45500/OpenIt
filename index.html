@@ -131,6 +131,38 @@
 .bc-tuto-boutons { display: flex; gap: 8px; }
 .bc-tuto-boutons .bc-btn { width: auto; padding: 8px 16px; font-size: 12.5px; }
 
+/* Visite guidée : surligne un élément réel de l'interface (via 4 zones
+   d'ombre qui laissent une fenêtre découpée autour de lui) et affiche une
+   bulle d'instruction à côté. */
+.bc-visite { display: none; }
+.bc-visite.bc-visible { display: block; }
+.bc-visite-ombre {
+  position: fixed; background: rgba(6,4,11,0.78); z-index: 400;
+  transition: top 0.35s ease, left 0.35s ease, right 0.35s ease, bottom 0.35s ease, width 0.35s ease, height 0.35s ease;
+}
+.bc-visite-cadre {
+  position: fixed; z-index: 401; border: 3px solid var(--bc-gold); border-radius: 10px;
+  box-shadow: 0 0 0 5px rgba(216,180,106,0.25), 0 0 26px rgba(216,180,106,0.55);
+  pointer-events: none;
+  transition: top 0.35s ease, left 0.35s ease, width 0.35s ease, height 0.35s ease;
+  animation: bc-visite-pulse 1.6s ease-in-out infinite;
+}
+@keyframes bc-visite-pulse {
+  0%, 100% { box-shadow: 0 0 0 5px rgba(216,180,106,0.25), 0 0 26px rgba(216,180,106,0.55); }
+  50% { box-shadow: 0 0 0 9px rgba(216,180,106,0.12), 0 0 34px rgba(216,180,106,0.75); }
+}
+.bc-visite-bulle {
+  position: fixed; z-index: 402; background: linear-gradient(180deg, #2c2246, #1c1530);
+  border: 1px solid var(--bc-border-strong); border-radius: 12px; padding: 16px 18px;
+  width: 280px; max-width: calc(100vw - 24px); box-shadow: 0 14px 34px rgba(0,0,0,0.55);
+  transition: top 0.35s ease, left 0.35s ease;
+}
+.bc-visite-titre { font-family: 'Cinzel', serif; font-weight: 700; font-size: 15px; color: var(--bc-gold-soft); margin: 0 0 8px; }
+.bc-visite-texte { font-size: 13px; color: var(--bc-text-dim); line-height: 1.5; margin: 0 0 8px; }
+.bc-visite-indice { font-size: 11.5px; color: var(--bc-emerald); margin: 0 0 14px; min-height: 14px; }
+.bc-visite-nav { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.bc-visite-nav .bc-btn { width: auto; padding: 7px 14px; font-size: 12px; }
+
 .bc-tabs {
   display: flex;
   gap: 4px;
@@ -277,6 +309,18 @@
 .bc-stats-table tr:last-child td { border-bottom: none; }
 .bc-stats-table td:first-child { color: var(--bc-text-dim); }
 .bc-stats-table td:last-child { text-align: right; font-weight: 700; color: var(--bc-gold-soft); font-variant-numeric: tabular-nums; }
+
+.bc-chat-messages {
+  max-height: 420px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;
+  background: var(--bc-panel-2); border: 1px solid var(--bc-border); border-radius: 10px; padding: 12px 14px;
+}
+.bc-chat-ligne { font-size: 13px; line-height: 1.4; word-break: break-word; }
+.bc-chat-pseudo { font-weight: 700; color: var(--bc-gold-soft); margin-right: 6px; }
+.bc-chat-texte { color: var(--bc-text-dim); }
+.bc-chat-modifie { font-size: 10.5px; color: var(--bc-text-mute); font-style: italic; }
+.bc-chat-controles { margin-left: 8px; display: inline-flex; gap: 8px; }
+.bc-chat-controles .bc-lien { font-size: 11px; }
+
 .bc-collec-groupe { margin-bottom: 20px; }
 .bc-collec-groupe h3 { font-family: 'Cinzel', serif; font-size: 15px; margin: 0 0 10px; color: var(--bc-gold-soft); }
 .bc-item-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
@@ -539,16 +583,19 @@
   </div>
 </div>
 
-<div class="bc-tuto-overlay" id="bc-tuto-overlay">
-  <div class="bc-tuto-card">
-    <button class="bc-tuto-passer" data-action="tuto-fermer">Passer ✕</button>
-    <div id="bc-tuto-corps"></div>
-    <div class="bc-tuto-nav">
-      <div class="bc-tuto-dots" id="bc-tuto-dots"></div>
-      <div class="bc-tuto-boutons">
-        <button class="bc-btn bc-btn-fantome" data-action="tuto-precedent" id="bc-tuto-btn-prec">Précédent</button>
-        <button class="bc-btn bc-btn-plein" data-action="tuto-suivant" id="bc-tuto-btn-suiv">Suivant</button>
-      </div>
+<div class="bc-visite" id="bc-visite">
+  <div class="bc-visite-ombre" id="bc-visite-haut"></div>
+  <div class="bc-visite-ombre" id="bc-visite-bas"></div>
+  <div class="bc-visite-ombre" id="bc-visite-gauche"></div>
+  <div class="bc-visite-ombre" id="bc-visite-droite"></div>
+  <div class="bc-visite-cadre" id="bc-visite-cadre"></div>
+  <div class="bc-visite-bulle" id="bc-visite-bulle">
+    <p class="bc-visite-titre" id="bc-visite-titre"></p>
+    <p class="bc-visite-texte" id="bc-visite-texte"></p>
+    <p class="bc-visite-indice" id="bc-visite-indice"></p>
+    <div class="bc-visite-nav">
+      <button class="bc-btn bc-btn-fantome bc-btn-petit" data-action="visite-passer">Passer la visite</button>
+      <button class="bc-btn bc-btn-plein bc-btn-petit" data-action="visite-suivant" id="bc-visite-btn-suivant">Suivant</button>
     </div>
   </div>
 </div>
@@ -601,6 +648,7 @@
 <script src="succes_caches.js"></script>
 <script src="musiques.js"></script>
 <script src="classement.js"></script>
+<script src="motsBannis.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
 <script src="systeme.js"></script>

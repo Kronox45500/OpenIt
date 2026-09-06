@@ -41,7 +41,7 @@
    ===================================================================== */
 
 const CLASSEMENT_CONFIG = {
-  actif: GPUExternalTexture, // passe à true une fois firebaseConfig rempli ci-dessous
+  actif: true, // passe à true une fois firebaseConfig rempli ci-dessous
   firebaseConfig: {
     apiKey: "AIzaSyC1hK_4aRZEPN5rWUZqWDDJFPQz9MBubas",
     databaseURL: "https://scoreboard-a8745-default-rtdb.europe-west1.firebasedatabase.app",
