@@ -165,7 +165,14 @@ const UPGRADES = {
     nom: "Négociation", desc: "Réduit le prix des boîtes en boutique (-4%/niveau, max 40%).",
     coutBase: 50, croissance: 1.4, max: 10, effet: (n) => Math.min(n * 0.04, 0.4),
   },
+  cap_hors_ligne: {
+    nom: "Coffre-fort", desc: "Augmente la durée pendant laquelle l'or continue de s'accumuler hors ligne (30 min par niveau, jusqu'à 5h).",
+    coutBase: 150, croissance: 1.6, max: 8, effet: (n) => 3600 + n * 1800,
+  },
 };
+function capHorsLigneSec() {
+  return UPGRADES.cap_hors_ligne.effet(state.upgrades.cap_hors_ligne || 0);
+}
 function coutAmelioration(id, niveau) {
   const u = UPGRADES[id];
   return Math.round(u.coutBase * Math.pow(u.croissance, niveau));
@@ -208,7 +215,8 @@ function tirerItem(box, chanceActuelle) {
    ===================================================================== */
 
 const SAVE_KEY = "box_collector_save";
-const CAP_HORS_LIGNE_SEC = 4 * 3600;
+// Le plafond hors-ligne est maintenant dynamique : voir capHorsLigneSec()
+// et l'amélioration "cap_hors_ligne" (1h de base, jusqu'à 5h).
 
 function nouvelEtat() {
   const boites = {};
@@ -264,7 +272,7 @@ function chargerEtat() {
       });
       state = data;
 
-      const ecouleSec = Math.max(0, Math.min(CAP_HORS_LIGNE_SEC, (Date.now() - state.derniereMaj) / 1000));
+      const ecouleSec = Math.max(0, Math.min(capHorsLigneSec(), (Date.now() - state.derniereMaj) / 1000));
       const gain = Math.floor(ecouleSec * revenuParSec());
       if (gain > 0) {
         state.or += gain;
@@ -2021,6 +2029,10 @@ function renderAmeliorations() {
               <span class="bc-slider-val">${state.chanceActuelle} / ${max}</span>
             </div>
             <p class="bc-slider-note">Baisse ta Chance pour retrouver plus facilement les objets communs qui te manquent.</p>`;
+        }
+        if (id === "cap_hors_ligne") {
+          const heures = capHorsLigneSec() / 3600;
+          extra = `<p class="bc-slider-note">Plafond actuel : ${heures}h d'or accumulé hors ligne.</p>`;
         }
         return `
         <div class="bc-card bc-upgrade-card">
