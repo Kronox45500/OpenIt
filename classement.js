@@ -38,6 +38,33 @@
      { "rules": { "classement": { ".read": true, ".write": true } } }
    pour limiter l'accès libre au seul nœud "classement" plutôt qu'à
    toute la base.
+
+   =====================================================================
+   COMPTES JOUEUR (email + mot de passe) — pour retrouver sa sauvegarde
+   sur n'importe quel appareil.
+   =====================================================================
+
+   1. Dans la console Firebase, menu de gauche : Compilation >
+      Authentication > "Get started" (ou "Commencer").
+   2. Onglet "Sign-in method" > active "Email/Password" (juste le
+      premier interrupteur, pas besoin du lien par email).
+   3. C'est tout — le reste (création de compte, connexion, sauvegarde
+      liée au compte) est déjà géré par le jeu.
+
+   Règles Realtime Database recommandées (chaque joueur ne peut lire/
+   écrire QUE sa propre sauvegarde, jamais celle d'un autre) :
+     {
+       "rules": {
+         "classement": { ".read": true, ".write": true },
+         "chat": { ".read": true, ".write": true },
+         "comptes": {
+           "$uid": {
+             ".read": "auth != null && auth.uid === $uid",
+             ".write": "auth != null && auth.uid === $uid"
+           }
+         }
+       }
+     }
    ===================================================================== */
 
 const CLASSEMENT_CONFIG = {

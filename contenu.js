@@ -50,6 +50,10 @@ const NOMS_RARETES = [
      prestigeRequis -> le joueur doit avoir fait au moins N Prestiges
                        (idéal pour des boîtes exclusives "post-Prestige")
    Sans l'un de ces champs, la boîte est disponible dès le niveau 1.
+
+   Un troisième champ optionnel retire une boîte de la Boutique classique :
+     exclusifCadeau -> la boîte ne s'achète JAMAIS, elle ne s'obtient que
+                       reçue en cadeau d'un ami (onglet Amis).
    ===================================================================== */
 
 const BOITES_DE_BASE = [
@@ -352,6 +356,20 @@ const BOITES_DE_BASE = [
     ],
   },
 
+  {
+    nom: "Coffre Multi",
+    exclusifCadeau: true,
+    prix: 4000,
+    matiere: "#ff6fd8",
+    items: [
+      { nom: "Ruban de l'amitié", rarete: "Rare" },
+      { nom: "Médaillon partagé", rarete: "Épique" },
+      { nom: "Éclat de générosité", rarete: "Légendaire" },
+      { nom: "Cœur offert", rarete: "Mythique" },
+      { nom: "Couronne du lien éternel", rarete: "Antique" },
+    ],
+  },
+
   // Pour ajouter une nouvelle boîte de base, copie-colle un bloc
   // { nom: ..., prix: ..., matiere: ..., items: [...] } ci-dessus,
   // juste avant cette ligne, et modifie-le.
@@ -364,7 +382,12 @@ const BOITES_DE_BASE = [
    "code" est ce que le joueur tape pour débloquer le DLC. Un DLC peut
    combiner librement quatre types de contenu (tous optionnels) :
 
-   - boites   : des boîtes à ouvrir, exactement comme dans BOITES_DE_BASE.
+   - boites   : des boîtes à ouvrir, exactement comme dans BOITES_DE_BASE
+                (le champ "niveauRequis" fonctionne aussi ici : une boîte
+                de DLC peut être débloquée progressivement même si le DLC
+                est activé plus tôt — pratique pour étaler un DLC riche
+                sur plusieurs paliers de niveau plutôt que tout donner
+                d'un coup).
 
    - themes   : des thèmes de couleurs que le joueur peut activer/désactiver
                 depuis l'onglet DLC. Clés de "couleurs" disponibles :
@@ -392,7 +415,8 @@ const DLC_PACKS = [
     boites: [
       {
         nom: "Coffre du Givre",
-        prix: 300,
+        niveauRequis: 2,
+        prix: 140,
         matiere: "#7fd8e0",
         items: [
           { nom: "Flocon de glace", rarete: "Ordinaire" },
@@ -406,8 +430,25 @@ const DLC_PACKS = [
         ],
       },
       {
+        nom: "Traîneau du Marchand Nordique",
+        niveauRequis: 3,
+        prix: 220,
+        matiere: "#a8c5d6",
+        items: [
+          { nom: "Fourrure de loup blanc", rarete: "Commun" },
+          { nom: "Corne de renne", rarete: "Commun" },
+          { nom: "Amulette du chasseur", rarete: "Inhabituel" },
+          { nom: "Hache de glace", rarete: "Rare" },
+          { nom: "Bourse de marchand gelée", rarete: "Rare" },
+          { nom: "Manteau de givre", rarete: "Épique" },
+          { nom: "Traîneau enchanté miniature", rarete: "Légendaire" },
+          { nom: "Boussole du Grand Nord", rarete: "Antique" },
+        ],
+      },
+      {
         nom: "Reliquaire de la Reine Blanche",
-        prix: 550,
+        niveauRequis: 5,
+        prix: 380,
         matiere: "#ffffff",
         items: [
           { nom: "Rose gelée", rarete: "Rare" },
@@ -428,7 +469,8 @@ const DLC_PACKS = [
     boites: [
       {
         nom: "Coffre du Volcan",
-        prix: 350,
+        niveauRequis: 4,
+        prix: 420,
         matiere: "#e0623f",
         items: [
           { nom: "Charbon ardent", rarete: "Ordinaire" },
@@ -442,8 +484,25 @@ const DLC_PACKS = [
         ],
       },
       {
+        nom: "Forge des Salamandres",
+        niveauRequis: 5,
+        prix: 580,
+        matiere: "#d4622a",
+        items: [
+          { nom: "Écaille de salamandre", rarete: "Commun" },
+          { nom: "Charbon ensorcelé", rarete: "Commun" },
+          { nom: "Tenailles ardentes", rarete: "Inhabituel" },
+          { nom: "Lingot de fer en fusion", rarete: "Rare" },
+          { nom: "Gant du forgeron démoniaque", rarete: "Rare" },
+          { nom: "Masque de la fournaise", rarete: "Épique" },
+          { nom: "Marteau des Salamandres Anciennes", rarete: "Légendaire" },
+          { nom: "Cœur de la Forge Éternelle", rarete: "Antique" },
+        ],
+      },
+      {
         nom: "Coffre de l'Inferno",
-        prix: 600,
+        niveauRequis: 7,
+        prix: 780,
         matiere: "#fe0101",
         items: [
           { nom: "Cendre éternelle", rarete: "Rare" },
@@ -464,7 +523,8 @@ const DLC_PACKS = [
     boites: [
       {
         nom: "Coffre des Abysses",
-        prix: 400,
+        niveauRequis: 7,
+        prix: 950,
         matiere: "#2d3752",
         items: [
           { nom: "Coquillage noir", rarete: "Ordinaire" },
@@ -478,8 +538,25 @@ const DLC_PACKS = [
         ],
       },
       {
+        nom: "Épave du Corsaire Englouti",
+        niveauRequis: 8,
+        prix: 1300,
+        matiere: "#3d5a6b",
+        items: [
+          { nom: "Planche vermoulue", rarete: "Commun" },
+          { nom: "Boussole rouillée", rarete: "Commun" },
+          { nom: "Longue-vue fissurée", rarete: "Inhabituel" },
+          { nom: "Sabre corrodé", rarete: "Rare" },
+          { nom: "Carte au trésor déchirée", rarete: "Rare" },
+          { nom: "Perroquet fantôme", rarete: "Épique" },
+          { nom: "Trésor du Capitaine Maudit", rarete: "Légendaire" },
+          { nom: "Ancre du Corsaire Éternel", rarete: "Antique" },
+        ],
+      },
+      {
         nom: "Coffre de la Cité Engloutie",
-        prix: 700,
+        niveauRequis: 10,
+        prix: 1900,
         matiere: "#555baf",
         items: [
           { nom: "Pièce noyée", rarete: "Rare" },
@@ -500,7 +577,8 @@ const DLC_PACKS = [
     boites: [
       {
         nom: "Coffre des Ombres",
-        prix: 450,
+        niveauRequis: 10,
+        prix: 2300,
         matiere: "#363636",
         items: [
           { nom: "Bougie noire", rarete: "Ordinaire" },
@@ -514,8 +592,25 @@ const DLC_PACKS = [
         ],
       },
       {
+        nom: "Autel du Pacte Interdit",
+        niveauRequis: 11,
+        prix: 3300,
+        matiere: "#4a1f4a",
+        items: [
+          { nom: "Bougie noire rituelle", rarete: "Rare" },
+          { nom: "Grimoire interdit", rarete: "Rare" },
+          { nom: "Dague sacrificielle", rarete: "Épique" },
+          { nom: "Cendre d'un pacte rompu", rarete: "Épique" },
+          { nom: "Masque du Suppliant", rarete: "Légendaire" },
+          { nom: "Sceau du Pacte Ancien", rarete: "Mythique" },
+          { nom: "Larme du Damné", rarete: "Antique" },
+          { nom: "Voix du Néant Silencieux", rarete: "Divin" },
+        ],
+      },
+      {
         nom: "Coffre du Néant",
-        prix: 800,
+        niveauRequis: 13,
+        prix: 4700,
         matiere: "#000000",
         items: [
           { nom: "Fragment noir", rarete: "Rare" },
@@ -536,7 +631,8 @@ const DLC_PACKS = [
     boites: [
       {
         nom: "Trésor de l'Empereur Déchu",
-        prix: 3500,
+        niveauRequis: 13,
+        prix: 5800,
         matiere: "#c9a5f2",
         items: [
           { nom: "Pièce impériale ternie", rarete: "Commun" },
@@ -547,6 +643,22 @@ const DLC_PACKS = [
           { nom: "Sceptre de l'Empire Oublié", rarete: "Mythique" },
           { nom: "Manteau pourpre impérial", rarete: "Antique" },
           { nom: "Trône miniature de l'Empire", rarete: "Divin" },
+        ],
+      },
+      {
+        nom: "Arène des Gladiateurs Impériaux",
+        niveauRequis: 14,
+        prix: 7800,
+        matiere: "#d4af37",
+        items: [
+          { nom: "Casque du gladiateur déchu", rarete: "Épique" },
+          { nom: "Bouclier ébréché de l'arène", rarete: "Épique" },
+          { nom: "Chaîne du champion oublié", rarete: "Légendaire" },
+          { nom: "Trophée du Colisée", rarete: "Légendaire" },
+          { nom: "Couronne de lauriers impériale", rarete: "Mythique" },
+          { nom: "Sceptre du Maître de l'Arène", rarete: "Antique" },
+          { nom: "Sang du dernier duel", rarete: "Divin" },
+          { nom: "Gloire Éternelle de l'Empire", rarete: "Unique" },
         ],
       },
     ],

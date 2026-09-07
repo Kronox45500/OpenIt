@@ -123,6 +123,45 @@
   color: var(--bc-text-mute); font-size: 12px; cursor: pointer; padding: 4px;
 }
 .bc-tuto-passer:hover { color: var(--bc-text); }
+
+.bc-portail-overlay {
+  position: fixed; inset: 0; z-index: 500; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, #241b3d 0%, #0a0712 100%); padding: 20px;
+}
+.bc-portail-card {
+  width: 100%; max-width: 380px; text-align: center; background: linear-gradient(180deg, #2c2246, #1c1530);
+  border: 1px solid rgba(216,180,106,0.35); border-radius: 16px; padding: 32px 28px 26px;
+  box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+}
+.bc-portail-card input { text-align: left; }
+
+.bc-avatar-grille { display: flex; flex-wrap: wrap; gap: 6px; }
+.bc-avatar-choix {
+  width: 38px; height: 38px; border-radius: 8px; font-size: 18px; border: 1px solid var(--bc-border-strong);
+  background: var(--bc-panel); cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.bc-avatar-choix.bc-avatar-actif { border-color: var(--bc-gold); background: #352a4f; box-shadow: 0 0 0 2px var(--bc-gold) inset; }
+
+.bc-succes-liste { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
+.bc-succes-choix { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--bc-text-dim); cursor: pointer; }
+.bc-succes-choix input { accent-color: var(--bc-gold); cursor: pointer; }
+.bc-succes-choix-actif { color: var(--bc-gold-soft); font-weight: 600; }
+
+.bc-profil-apercu {
+  max-width: 260px; border: 2px solid var(--bc-gold); border-radius: 14px; padding: 20px 16px; text-align: center;
+}
+.bc-profil-avatar { font-size: 40px; margin-bottom: 6px; }
+.bc-profil-pseudo { font-family: 'Cinzel', serif; font-weight: 700; font-size: 16px; color: var(--bc-gold-soft); margin: 0 0 4px; }
+.bc-profil-stats { font-size: 11.5px; color: var(--bc-text-mute); margin: 0 0 10px; }
+.bc-profil-succes { display: flex; justify-content: center; gap: 6px; font-size: 18px; }
+
+.bc-ami-ligne { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--bc-border); font-size: 13px; }
+.bc-ami-ligne:last-child { border-bottom: none; }
+.bc-ami-avatar { font-size: 16px; }
+.bc-ami-pseudo { font-weight: 600; flex: 1; }
+.bc-ami-niveau { color: var(--bc-text-mute); font-size: 11.5px; }
+.bc-cadeau-choix { font-size: 12px; padding: 6px 0 10px; }
+.bc-cadeau-choix .bc-lien { margin-right: 4px; }
 .bc-tuto-titre { font-family: 'Cinzel', serif; font-weight: 700; font-size: 21px; color: var(--bc-gold-soft); margin: 0 0 14px; }
 .bc-tuto-texte { font-size: 14px; color: var(--bc-text-dim); line-height: 1.65; margin: 0; min-height: 110px; }
 .bc-tuto-nav { display: flex; align-items: center; justify-content: space-between; margin-top: 24px; gap: 12px; }
@@ -333,6 +372,27 @@
 .bc-item-chip-nom { font-weight: 600; margin: 3px 0 1px; }
 .bc-item-chip-qte { color: var(--bc-text-mute); font-size: 11px; }
 
+.bc-variante-puces { display: flex; gap: 4px; margin-top: 6px; }
+.bc-puce-variante {
+  width: 18px; height: 18px; border-radius: 5px; display: flex; align-items: center; justify-content: center;
+  font-size: 9.5px; font-weight: 800; border: 1px solid var(--bc-border-strong); color: var(--bc-text-mute);
+  background: var(--bc-panel); opacity: 0.4;
+}
+.bc-puce-variante.bc-acquise { opacity: 1; }
+.bc-puce-variante.bc-variante-golden.bc-acquise { background: #d8b46a; border-color: #d8b46a; color: #1c1530; }
+.bc-puce-variante.bc-variante-mega.bc-acquise { background: #7c9cf2; border-color: #7c9cf2; color: #1c1530; }
+.bc-puce-variante.bc-variante-ultra.bc-acquise { background: linear-gradient(135deg, #ff2fd1, #57ccf2); border-color: #ff2fd1; color: #fff; }
+
+.bc-log-variante { font-size: 9.5px; font-weight: 800; padding: 1px 5px; border-radius: 4px; margin: 0 2px; }
+.bc-variante-tag { font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 5px; margin-right: 4px; vertical-align: middle; }
+.bc-log-variante.bc-variante-golden, .bc-variante-tag.bc-variante-golden { background: #d8b46a; color: #1c1530; }
+.bc-log-variante.bc-variante-mega, .bc-variante-tag.bc-variante-mega { background: #7c9cf2; color: #1c1530; }
+.bc-log-variante.bc-variante-ultra, .bc-variante-tag.bc-variante-ultra { background: linear-gradient(135deg, #ff2fd1, #57ccf2); color: #fff; }
+
+.bc-reel-item.bc-variante-golden { box-shadow: 0 0 0 2px #d8b46a inset; }
+.bc-reel-item.bc-variante-mega { box-shadow: 0 0 0 2px #7c9cf2 inset; }
+.bc-reel-item.bc-variante-ultra { box-shadow: 0 0 0 2px #ff2fd1 inset; }
+
 .bc-progress-bar { height: 6px; border-radius: 3px; background: var(--bc-panel-2); overflow: hidden; margin: 6px 0 18px; border: 1px solid var(--bc-border); }
 .bc-progress-fill { height: 100%; background: var(--bc-emerald); }
 
@@ -515,6 +575,24 @@
 })();
 </script>
 
+<div class="bc-portail-overlay" id="bc-portail-connexion" style="display:none;">
+  <div class="bc-portail-card">
+    <h1 class="bc-title" style="margin-bottom:8px; font-size:26px;">Open It</h1>
+    <p style="font-size:13px; color:var(--bc-text-dim); margin-bottom:20px;">Connecte-toi ou crée un compte pour commencer — ta progression est sauvegardée dans le cloud, tu la retrouveras sur n'importe quel appareil.</p>
+    <div class="bc-code-row" style="flex-direction:column; max-width:none; margin-bottom:8px;">
+      <input type="email" id="champ-email-portail" placeholder="Adresse email">
+    </div>
+    <div class="bc-code-row" style="flex-direction:column; max-width:none; margin-bottom:16px;">
+      <input type="password" id="champ-mdp-portail" placeholder="Mot de passe (6 caractères min.)">
+    </div>
+    <div class="bc-code-row" style="max-width:none;">
+      <button class="bc-btn bc-btn-plein" style="flex:1;" data-action="creer-compte-portail">Créer un compte</button>
+      <button class="bc-btn bc-btn-fantome" style="flex:1;" data-action="connecter-compte-portail">Se connecter</button>
+    </div>
+    <div class="bc-msg" id="msg-portail" style="margin-top:10px;"></div>
+  </div>
+</div>
+
 <div class="bc-layout" id="bc-layout">
 <div id="bc-root">
   <header class="bc-header">
@@ -539,6 +617,7 @@
       <button class="bc-btn bc-btn-fantome bc-reset-btn" data-action="reset">Reset</button>
       <button class="bc-btn bc-btn-fantome bc-aide-btn" data-action="ouvrir-tuto" title="Revoir le tutoriel">?</button>
       <button class="bc-btn bc-btn-fantome bc-aide-btn" id="bc-bouton-musique" data-action="basculer-musique" title="Couper / activer la musique">🔇</button>
+      <button class="bc-btn bc-btn-fantome bc-aide-btn" id="bc-bouton-sons-jeu" data-action="basculer-sons-jeu" title="Couper / activer les sons du jeu (ouverture, rareté...)">🔊</button>
       <input type="range" id="bc-volume" class="bc-volume-slider" min="0" max="100" value="40" data-action="volume-slider" title="Volume de la musique">
       <button class="bc-btn bc-btn-fantome bc-aide-btn" data-action="ouvrir-playlist" title="Playlist musicale">🎵</button>
       <audio id="bc-audio" preload="auto"></audio>
@@ -676,6 +755,7 @@
 <script src="motsBannis.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
 <script src="systeme.js"></script>
 </body>
 </html>

@@ -205,9 +205,17 @@ function tirerPondere(items, poids) {
   }
   return items[items.length - 1];
 }
+function tirerVariante() {
+  const r = Math.random();
+  if (r < 0.001) return "ultra";
+  if (r < 0.011) return "mega";
+  if (r < 0.061) return "golden";
+  return null;
+}
 function tirerItem(box, chanceActuelle) {
   const poids = box.items.map((it) => poidsEffectif(box, it, chanceActuelle));
-  return tirerPondere(box.items, poids);
+  const item = tirerPondere(box.items, poids);
+  return { item, variante: tirerVariante() };
 }
 
 /* =====================================================================
@@ -227,6 +235,9 @@ function nouvelEtat() {
     boitesAchetees: { ...boites },
     coutsBoites: {},
     collection: {},
+    variantes: {},
+    streakJours: 0,
+    streakDernierJour: null,
     upgrades: { revenu: 0, chance_max: 0, remise: 0 },
     chanceActuelle: 0,
     dlcDebloques: [],
@@ -243,6 +254,7 @@ function nouvelEtat() {
     volumeMusique: 40,
     pistesDesactivees: {},
     musiqueBouclee: false,
+    sonsJeuCoupes: false,
     pseudo: null,
     idJoueurClassement: null,
     notificationsChatCoupees: false,
@@ -294,6 +306,7 @@ function sauvegarder() {
   sauvegardeEnCours = setTimeout(() => {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(state)); }
     catch (e) { /* stockage indisponible, on continue sans bloquer le jeu */ }
+    synchroniserCloudSiConnecte();
   }, 250);
 }
 
@@ -598,6 +611,8 @@ function renderBoutonMusique() {
   if (btn) btn.textContent = state.musiqueCoupee ? "🔇" : "🔊";
   const slider = document.getElementById("bc-volume");
   if (slider) slider.value = state.volumeMusique ?? 40;
+  const btnSons = document.getElementById("bc-bouton-sons-jeu");
+  if (btnSons) btnSons.textContent = state.sonsJeuCoupes ? "🔇" : "🔊";
 }
 
 function renderControlesPlaylist() {
@@ -638,6 +653,18 @@ function renderListePlaylist() {
   animation une boîte achetée parmi celles en stock, toutes les 15 secondes.
   ===================================================================== */
 
+function enregistrerVariante(itemId, variante) {
+  if (!variante) return;
+  if (!state.variantes[itemId]) state.variantes[itemId] = {};
+  state.variantes[itemId][variante] = true;
+}
+function prefixeVariante(variante) {
+  if (variante === "ultra") return "💎 ULTRA — ";
+  if (variante === "mega") return "🌟 MEGA — ";
+  if (variante === "golden") return "✨ GOLDEN — ";
+  return "";
+}
+
 function tickAutomatisation() {
   if (!estMecaniqueActive("auto_ouverture")) return;
   const possedees = Object.entries(state.boitesAchetees).filter(([, q]) => q > 0);
@@ -646,13 +673,14 @@ function tickAutomatisation() {
   const [boxId] = possedees[0];
   const box = BOITES_PAR_ID[boxId];
   if (!box) return;
-  const item = tirerItem(box, state.chanceActuelle);
+  const { item, variante } = tirerItem(box, state.chanceActuelle);
   state.collection[item.id] = (state.collection[item.id] || 0) + 1;
+  enregistrerVariante(item.id, variante);
   state.boites[boxId] -= 1;
   state.boitesAchetees[boxId] -= 1;
   state.stats.boitesOuvertesTotal += 1;
   ajouterXp(xpPourOuverture(box));
-  afficherToast(`🤖 Ouverture automatique : ${item.nom}`);
+  afficherToast(`🤖 Ouverture automatique : ${prefixeVariante(variante)}${item.nom}`);
   sauvegarder();
   verifierSucces();
   verifierSuccesCaches();
@@ -694,6 +722,36 @@ function categoriesBoites(filtre) {
 }
 
 function formaterNombre(n) { return Math.round(n).toLocaleString("fr-FR"); }
+
+/* =====================================================================
+   STREAK DE CONNEXION — un petit bonus d'or chaque jour, qui grandit
+   tant que le joueur revient jour après jour (remis à 1 s'il saute un
+   jour). Vérifié une fois par chargement de page.
+   ===================================================================== */
+
+function dateDuJour(decalageJours) {
+  const d = new Date();
+  if (decalageJours) d.setDate(d.getDate() + decalageJours);
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+
+function recompenseStreak(jours) {
+  return Math.min(2000, 50 * jours);
+}
+
+function verifierStreakConnexion() {
+  const aujourdhui = dateDuJour(0);
+  if (state.streakDernierJour === aujourdhui) return;
+  const hier = dateDuJour(-1);
+  state.streakJours = state.streakDernierJour === hier ? (state.streakJours || 0) + 1 : 1;
+  state.streakDernierJour = aujourdhui;
+  const recompense = recompenseStreak(state.streakJours);
+  state.or += recompense;
+  state.stats.orGagneTotal += recompense;
+  sauvegarder();
+  setTimeout(() => afficherToast(`🔥 Connexion jour ${state.streakJours} d'affilée ! +${formaterNombre(recompense)} or`), 900);
+}
+
 function formaterDuree(secondes) {
   const s = Math.max(0, Math.floor(secondes));
   const jours = Math.floor(s / 86400);
@@ -844,33 +902,95 @@ function itemsFusionnables() {
   return liste;
 }
 
-function fusionner(boxId, itemId) {
-  const box = BOITES_PAR_ID[boxId];
-  if (!box) return;
-  const item = box.items.find((i) => i.id === itemId);
-  if (!item) return;
-  const qte = state.collection[itemId] || 0;
-  if (qte < FUSION_COUT + 1) return;
-
-  state.collection[itemId] = qte - FUSION_COUT;
+function effectuerUneFusion(box, item) {
+  const qte = state.collection[item.id] || 0;
+  if (qte < FUSION_COUT + 1) return null;
+  state.collection[item.id] = qte - FUSION_COUT;
   state.stats.fusionsTotal = (state.stats.fusionsTotal || 0) + 1;
   ajouterXp(8);
 
   const superieure = rareteSuperieure(item.rarete);
   const itemsCible = superieure ? box.items.filter((i) => i.rarete === superieure) : [];
-  let message;
   if (itemsCible.length > 0) {
     const gagne = itemsCible[Math.floor(Math.random() * itemsCible.length)];
     state.collection[gagne.id] = (state.collection[gagne.id] || 0) + 1;
-    message = `Tu obtiens : ${gagne.nom} (${PALIER[gagne.rarete].label})`;
-  } else {
-    const gain = 40 + INDEX_RARETE[item.rarete] * 30;
-    state.or += gain;
-    state.stats.orGagneTotal += gain;
-    message = `+${gain} or (rareté déjà maximale dans cette boîte)`;
+    return { type: "item", nom: gagne.nom, rarete: gagne.rarete };
   }
+  const gain = 40 + INDEX_RARETE[item.rarete] * 30;
+  state.or += gain;
+  state.stats.orGagneTotal += gain;
+  return { type: "or", gain };
+}
+
+function fusionner(boxId, itemId) {
+  const box = BOITES_PAR_ID[boxId];
+  if (!box) return;
+  const item = box.items.find((i) => i.id === itemId);
+  if (!item) return;
+  const resultat = effectuerUneFusion(box, item);
+  if (!resultat) return;
+
+  const message = resultat.type === "item" ? `Tu obtiens : ${resultat.nom} (${PALIER[resultat.rarete].label})` : `+${resultat.gain} or (rareté déjà maximale dans cette boîte)`;
   sauvegarder();
   afficherToast("Fusion : " + message);
+  verifierSucces();
+  verifierSuccesCaches();
+  render();
+}
+
+function fusionnerMax(boxId, itemId) {
+  const box = BOITES_PAR_ID[boxId];
+  if (!box) return;
+  const item = box.items.find((i) => i.id === itemId);
+  if (!item) return;
+  let nb = 0, or = 0;
+  const objetsGagnes = {};
+  let resultat;
+  while ((resultat = effectuerUneFusion(box, item))) {
+    nb++;
+    if (resultat.type === "or") or += resultat.gain;
+    else objetsGagnes[resultat.nom] = (objetsGagnes[resultat.nom] || 0) + 1;
+  }
+  if (nb === 0) return;
+  sauvegarder();
+  const morceaux = [];
+  if (or > 0) morceaux.push(`+${or} or`);
+  Object.entries(objetsGagnes).forEach(([nom, n]) => morceaux.push(`${n}× ${nom}`));
+  afficherToast(`Fusion ×${nb} : ${morceaux.join(", ")}`);
+  verifierSucces();
+  verifierSuccesCaches();
+  render();
+}
+
+function fusionnerTout() {
+  let totalFusions = 0, totalOr = 0;
+  const objetsGagnes = {};
+  let continuer = true;
+  let garde = 0;
+  while (continuer && garde < 20000) {
+    continuer = false;
+    itemsFusionnables().forEach(({ box, item }) => {
+      let resultat;
+      while ((resultat = effectuerUneFusion(box, item))) {
+        garde++;
+        totalFusions++;
+        continuer = true;
+        if (resultat.type === "or") totalOr += resultat.gain;
+        else objetsGagnes[resultat.nom] = (objetsGagnes[resultat.nom] || 0) + 1;
+      }
+    });
+  }
+  if (totalFusions === 0) {
+    afficherToast("Aucune fusion possible pour le moment.");
+    return;
+  }
+  sauvegarder();
+  const morceaux = [];
+  if (totalOr > 0) morceaux.push(`+${totalOr} or`);
+  const entrees = Object.entries(objetsGagnes);
+  if (entrees.length <= 4) entrees.forEach(([nom, n]) => morceaux.push(`${n}× ${nom}`));
+  else morceaux.push(`${entrees.length} objets différents obtenus`);
+  afficherToast(`${totalFusions} fusions réalisées : ${morceaux.join(", ")}`);
   verifierSucces();
   verifierSuccesCaches();
   render();
@@ -919,6 +1039,30 @@ function construireSucces() {
       liste.push({ id: "dlc_tous", titre: "Tout inclus", description: "Débloque tous les DLC disponibles.", recompense: 400, condition: () => state.dlcDebloques.length >= DLC_PACKS.length });
     }
   }
+
+  // Succès propres à chaque DLC : ils n'existent (et n'apparaissent dans
+  // l'onglet Succès) que pour les DLC déjà activés — construireSucces()
+  // est relancé juste après l'activation d'un DLC pour qu'ils apparaissent
+  // immédiatement, sans recharger la page.
+  DLC_PACKS.forEach((dlc) => {
+    if (!state.dlcDebloques.includes(dlc.id)) return;
+    if (!dlc.boites || !dlc.boites.length) return;
+    const prefixe = dlc.id.startsWith("dlc") ? dlc.id : "dlc_" + dlc.id;
+    liste.push({
+      id: prefixe + "_decouverte",
+      titre: `Bienvenue : ${dlc.nom}`,
+      description: `Obtiens ton premier objet du DLC "${dlc.nom}".`,
+      recompense: 150,
+      condition: () => dlc.boites.some((box) => box.items.some((it) => (state.collection[it.id] || 0) > 0)),
+    });
+    liste.push({
+      id: prefixe + "_complet",
+      titre: `Maîtrise : ${dlc.nom}`,
+      description: `Complète toute la collection du DLC "${dlc.nom}".`,
+      recompense: 1000,
+      condition: () => dlc.boites.every((box) => estBoiteComplete(box)),
+    });
+  });
 
   liste.push({ id: "fusion_premiere", titre: "Alchimiste débutant", description: "Réalise ta première fusion.", recompense: 50, condition: () => (state.stats.fusionsTotal || 0) >= 1 });
   liste.push({ id: "fusion_10", titre: "Maître fusionneur", description: "Réalise 10 fusions.", recompense: 300, condition: () => (state.stats.fusionsTotal || 0) >= 10 });
@@ -1462,6 +1606,7 @@ const CHEATS = {
           state.dlcDebloques.push(d.id);
         }
       });
+      SUCCES = construireSucces();
     },
   },
   N4BALLACHIEVEMENTSN4B: {
@@ -1730,6 +1875,8 @@ const TABS = [
   { id: "stats", label: "Statistiques", render: renderStatistiques, debloquage: "stats" },
   { id: "prestige", label: "Prestige", render: renderPrestige, debloquage: "prestige" },
   { id: "classement", label: "Classement", render: renderClassement, debloquage: "classement" },
+  { id: "compte", label: "Compte", render: renderCompte },
+  { id: "amis", label: "Amis", render: renderAmis },
   { id: "chat", label: "Chat", render: renderChat, debloquage: "chat" },
 ];
 
@@ -1815,7 +1962,7 @@ function boiteDebloqueeParNiveau(box) {
 }
 
 function renderBoutique() {
-  const categories = categoriesBoites();
+  const categories = categoriesBoites((b) => !b.exclusifCadeau);
   if (!categories.length) return `<div class="bc-empty">Aucune boîte disponible.</div>`;
   const carteBoite = (box) => {
     if (!boiteDebloqueeParNiveau(box)) {
@@ -1915,7 +2062,8 @@ function renderJournal(boxId) {
     ui.dernierLog.items
       .map((it) => {
         const palier = PALIER[it.rarete];
-        return `<div class="bc-log-row"><span class="bc-dot" style="background:${palier.couleur}"></span><span>${escHtml(it.nom)}</span><span style="color:var(--bc-text-mute)">— ${palier.label}</span></div>`;
+        const etiquette = it.variante ? `<span class="bc-log-variante bc-variante-${it.variante}">${it.variante.toUpperCase()}</span>` : "";
+        return `<div class="bc-log-row"><span class="bc-dot" style="background:${palier.couleur}"></span><span>${escHtml(it.nom)}</span>${etiquette}<span style="color:var(--bc-text-mute)">— ${palier.label}</span></div>`;
       })
       .join("") +
     `</div>`
@@ -2071,6 +2219,7 @@ function renderFusion() {
   if (!liste.length) {
     return intro + `<div class="bc-empty">Pas encore de doublons à fusionner. Reviens ici quand tu auras ${FUSION_COUT + 1}+ exemplaires d'un même objet.</div>`;
   }
+  const boutonToutFusionner = `<button class="bc-btn bc-btn-fantome" style="margin-bottom:14px;" data-action="fusionner-tout">Tout fusionner (${liste.length} objet${liste.length > 1 ? "s" : ""} concerné${liste.length > 1 ? "s" : ""})</button>`;
   const cartes = liste
     .map(({ box, item, qte }) => {
       const palier = PALIER[item.rarete];
@@ -2082,10 +2231,13 @@ function renderFusion() {
         <button class="bc-btn bc-btn-plein" data-action="fusionner" data-box="${box.id}" data-item="${item.id}">
           Fusionner ${FUSION_COUT} → ${superieure ? PALIER[superieure].label : "or"}
         </button>
+        <button class="bc-btn bc-btn-fantome" data-action="fusionner-max" data-box="${box.id}" data-item="${item.id}">
+          Tout fusionner (${Math.floor(qte / FUSION_COUT)}×)
+        </button>
       </div>`;
     })
     .join("");
-  return intro + `<div class="bc-grid">${cartes}</div>`;
+  return intro + boutonToutFusionner + `<div class="bc-grid">${cartes}</div>`;
 }
 
 function renderCollection() {
@@ -2100,12 +2252,19 @@ function renderCollection() {
         const qte = state.collection[it.id] || 0;
         if (qte > 0) totalObtenus++;
         const palier = PALIER[it.rarete];
+        const v = state.variantes[it.id] || {};
+        const puces = `<div class="bc-variante-puces">
+          <span class="bc-puce-variante bc-variante-golden ${v.golden ? "bc-acquise" : ""}" title="Golden (5%)">G</span>
+          <span class="bc-puce-variante bc-variante-mega ${v.mega ? "bc-acquise" : ""}" title="Mega (1%)">M</span>
+          <span class="bc-puce-variante bc-variante-ultra ${v.ultra ? "bc-acquise" : ""}" title="Ultra (0.1%)">U</span>
+        </div>`;
         corps +=
           qte > 0
             ? `<div class="bc-item-chip" style="border-left:3px solid ${palier.couleur}">
                  <span class="bc-dot" style="background:${palier.couleur}"></span>
                  <p class="bc-item-chip-nom">${escHtml(it.nom)}</p>
                  <p class="bc-item-chip-qte">${palier.label} · x${qte}</p>
+                 ${puces}
                </div>`
             : `<div class="bc-item-chip bc-manquant">
                  <span class="bc-dot" style="background:${palier.couleur}"></span>
@@ -2216,6 +2375,7 @@ function renderStatistiques() {
   const totalItems = Object.values(BOITES_PAR_ID).flatMap((b) => b.items).length;
   const obtenus = Object.values(state.collection).filter((q) => q > 0).length;
   const pctCollection = totalItems ? Math.round((100 * obtenus) / totalItems) : 0;
+  const variantesObtenues = Object.values(state.variantes || {}).reduce((acc, v) => acc + Object.values(v).filter(Boolean).length, 0);
 
   const groupes = [
     {
@@ -2227,6 +2387,7 @@ function renderStatistiques() {
         ["Temps de jeu total", formaterDuree(state.stats.tempsJeuSecondes || 0)],
         ["Prestiges effectués", formaterNombre(state.prestige || 0)],
         ["Meilleur niveau atteint", formaterNombre(Math.max(state.stats.meilleurNiveauAtteint || 0, niveau))],
+        ["Streak de connexion", `🔥 ${state.streakJours || 0} jour${(state.streakJours || 0) > 1 ? "s" : ""}`],
       ],
     },
     {
@@ -2244,6 +2405,7 @@ function renderStatistiques() {
         ["Objets uniques obtenus", `${obtenus} / ${totalItems}`],
         ["Collection complétée", pctCollection + "%"],
         ["Fusions réalisées", formaterNombre(state.stats.fusionsTotal || 0)],
+        ["Variantes obtenues (G/M/U)", formaterNombre(variantesObtenues)],
       ],
     },
     {
@@ -2645,10 +2807,640 @@ function supprimerMessageChat(id) {
 }
 
 /* =====================================================================
+   COMPTE JOUEUR — email + mot de passe (Firebase Authentication), pour
+   retrouver sa sauvegarde sur n'importe quel appareil. Utilise la même
+   configuration Firebase que le classement (voir classement.js), plus
+   Authentication à activer une fois dans la console (instructions dans
+   classement.js).
+
+   Une fois connecté, la sauvegarde est synchronisée automatiquement à
+   chaque sauvegarde locale. À la connexion : si une sauvegarde cloud
+   existe déjà pour ce compte, elle remplace la sauvegarde locale (le
+   cloud fait foi) ; sinon, la sauvegarde locale actuelle est envoyée
+   dans le cloud pour ce compte.
+   ===================================================================== */
+
+let firebaseAuthUser = null;
+let firebaseAuthInitialise = false;
+let syncCloudEnCours = false;
+
+function compteConfigure() {
+  return classementConfigure() && typeof firebase !== "undefined" && !!firebase.auth;
+}
+
+let jeuDemarre = false;
+
+function demarrerJeuSiPasEncore() {
+  if (jeuDemarre) return;
+  jeuDemarre = true;
+  masquerPortailConnexion();
+  initJeu();
+}
+
+function afficherPortailConnexion() {
+  const portail = document.getElementById("bc-portail-connexion");
+  const layout = document.getElementById("bc-layout");
+  if (portail) portail.style.display = "flex";
+  if (layout) layout.style.display = "none";
+}
+
+function masquerPortailConnexion() {
+  const portail = document.getElementById("bc-portail-connexion");
+  const layout = document.getElementById("bc-layout");
+  if (portail) portail.style.display = "none";
+  if (layout) layout.style.display = "";
+}
+
+function initialiserFirebaseAuth() {
+  if (firebaseAuthInitialise) return true;
+  if (!compteConfigure() || !initialiserFirebase()) return false;
+  firebaseAuthInitialise = true;
+  firebase.auth().onAuthStateChanged(async (user) => {
+    firebaseAuthUser = user;
+    if (user) {
+      await chargerSauvegardeCloud();
+      demarrerJeuSiPasEncore();
+    } else if (!jeuDemarre) {
+      afficherPortailConnexion();
+    }
+    if (jeuDemarre && ui.tab === "compte") render();
+  });
+  return true;
+}
+
+function messageErreurCompte(e) {
+  const map = {
+    "auth/email-already-in-use": "Cet email a déjà un compte — connecte-toi plutôt.",
+    "auth/invalid-email": "Adresse email invalide.",
+    "auth/weak-password": "Mot de passe trop court (6 caractères minimum).",
+    "auth/wrong-password": "Mot de passe incorrect.",
+    "auth/user-not-found": "Aucun compte avec cet email.",
+    "auth/invalid-credential": "Email ou mot de passe incorrect.",
+    "auth/too-many-requests": "Trop de tentatives, réessaie plus tard.",
+  };
+  return map[e && e.code] || "Erreur : " + ((e && e.message) || "inconnue");
+}
+
+function refSauvegardeCompte() {
+  if (!firebaseAuthUser) return null;
+  return firebase.database().ref("comptes/" + firebaseAuthUser.uid + "/sauvegarde");
+}
+
+async function chargerSauvegardeCloud() {
+  const ref = refSauvegardeCompte();
+  if (!ref) return;
+  try {
+    const snap = await ref.once("value");
+    const distante = snap.val();
+    if (distante) {
+      const base = nouvelEtat();
+      const donnees = JSON.parse(distante);
+      Object.keys(base).forEach((k) => { if (!(k in donnees)) donnees[k] = base[k]; });
+      state = donnees;
+      appliquerApparence();
+      if (jeuDemarre) {
+        SUCCES = construireSucces();
+        afficherToast("☁️ Sauvegarde du compte chargée.");
+      }
+    } else {
+      // Aucune sauvegarde cloud pour ce compte : nouveau compte. On envoie la
+      // sauvegarde LOCALE actuelle (utile pour les joueurs déjà en cours de
+      // partie qui créent un compte — leur progression est conservée), on
+      // crée un profil de base, et on offre 1 Coffre Multi pour amorcer les
+      // cadeaux entre amis (sinon personne n'en aurait jamais un premier !).
+      syncCloudEnCours = true;
+      await ref.set(JSON.stringify(state));
+      const coffreMulti = BOITES_DE_BASE.find((b) => b.exclusifCadeau);
+      if (coffreMulti) state.boites[coffreMulti.id] = (state.boites[coffreMulti.id] || 0) + 1;
+      try {
+        await firebase.database().ref("profils/" + firebaseAuthUser.uid).set({
+          pseudo: state.pseudo || firebaseAuthUser.email.split("@")[0],
+          avatar: "🙂",
+          succesAffiches: [],
+          couleurCadre: "#d8b46a",
+          couleurFond: "#201931",
+          niveau: niveauPourXp(state.stats.xp || 0),
+          prestige: state.prestige || 0,
+          maj: Date.now(),
+        });
+      } catch (e) { /* le profil pourra être créé plus tard depuis l'onglet Compte */ }
+      syncCloudEnCours = false;
+      if (jeuDemarre) afficherToast("☁️ Sauvegarde envoyée dans le cloud pour ce compte. 🎁 Un Coffre Multi t'attend !");
+    }
+    if (jeuDemarre) render();
+  } catch (e) {
+    if (jeuDemarre) afficherToast("Erreur de synchronisation cloud.");
+  }
+}
+
+function synchroniserCloudSiConnecte() {
+  if (syncCloudEnCours) return;
+  const ref = refSauvegardeCompte();
+  if (!ref) return;
+  ref.set(JSON.stringify(state)).catch(() => {});
+}
+
+function creerCompte(idEmail, idMdp, idMsg) {
+  idEmail = idEmail || "champ-email-compte";
+  idMdp = idMdp || "champ-mdp-compte";
+  idMsg = idMsg || "msg-compte";
+  const email = (document.getElementById(idEmail).value || "").trim();
+  const mdp = document.getElementById(idMdp).value || "";
+  const msgEl = document.getElementById(idMsg);
+  if (!email || !mdp) {
+    msgEl.textContent = "Renseigne un email et un mot de passe.";
+    msgEl.className = "bc-msg bc-msg-err";
+    return;
+  }
+  if (!compteConfigure() || !initialiserFirebaseAuth()) {
+    msgEl.textContent = "Le système de compte n'est pas configuré.";
+    msgEl.className = "bc-msg bc-msg-err";
+    return;
+  }
+  msgEl.textContent = "Création en cours…";
+  msgEl.className = "bc-msg";
+  firebase
+    .auth()
+    .createUserWithEmailAndPassword(email, mdp)
+    .catch((e) => {
+      msgEl.textContent = messageErreurCompte(e);
+      msgEl.className = "bc-msg bc-msg-err";
+    });
+}
+
+function connecterCompte(idEmail, idMdp, idMsg) {
+  idEmail = idEmail || "champ-email-compte";
+  idMdp = idMdp || "champ-mdp-compte";
+  idMsg = idMsg || "msg-compte";
+  const email = (document.getElementById(idEmail).value || "").trim();
+  const mdp = document.getElementById(idMdp).value || "";
+  const msgEl = document.getElementById(idMsg);
+  if (!email || !mdp) {
+    msgEl.textContent = "Renseigne un email et un mot de passe.";
+    msgEl.className = "bc-msg bc-msg-err";
+    return;
+  }
+  if (!compteConfigure() || !initialiserFirebaseAuth()) {
+    msgEl.textContent = "Le système de compte n'est pas configuré.";
+    msgEl.className = "bc-msg bc-msg-err";
+    return;
+  }
+  msgEl.textContent = "Connexion en cours…";
+  msgEl.className = "bc-msg";
+  firebase
+    .auth()
+    .signInWithEmailAndPassword(email, mdp)
+    .catch((e) => {
+      msgEl.textContent = messageErreurCompte(e);
+      msgEl.className = "bc-msg bc-msg-err";
+    });
+}
+
+function deconnecterCompte() {
+  if (!compteConfigure()) return;
+  firebase
+    .auth()
+    .signOut()
+    .then(() => {
+      profilLocal = null;
+      profilChargeUid = null;
+      listeAmisChargee = null;
+      cadeauxRecus = null;
+      resultatsRechercheAmis = [];
+      afficherToast("Déconnecté.");
+      render();
+    });
+}
+
+const AVATARS_DISPONIBLES = ["🙂", "😎", "🤠", "🧙", "🦊", "🐱", "🐼", "🐸", "🦄", "🐲", "🤖", "👑", "🎩", "🍀", "⭐", "💎"];
+
+let profilLocal = null;
+let profilChargeUid = null;
+
+function refProfil(uid) { return firebase.database().ref("profils/" + uid); }
+function refAmis(uid) { return firebase.database().ref("amis/" + uid); }
+function refCadeaux(uid) { return firebase.database().ref("cadeaux/" + uid); }
+
+async function chargerProfil() {
+  if (!firebaseAuthUser) return;
+  try {
+    const snap = await refProfil(firebaseAuthUser.uid).once("value");
+    profilLocal = snap.val() || {
+      pseudo: state.pseudo || "",
+      avatar: "🙂",
+      succesAffiches: [],
+      couleurCadre: "#d8b46a",
+      couleurFond: "#201931",
+    };
+  } catch (e) {
+    profilLocal = { pseudo: state.pseudo || "", avatar: "🙂", succesAffiches: [], couleurCadre: "#d8b46a", couleurFond: "#201931" };
+  }
+  profilChargeUid = firebaseAuthUser.uid;
+}
+
+async function enregistrerProfil() {
+  if (!firebaseAuthUser || !profilLocal) return;
+  const donnees = {
+    ...profilLocal,
+    niveau: niveauPourXp(state.stats.xp || 0),
+    prestige: state.prestige || 0,
+    maj: Date.now(),
+  };
+  try {
+    await refProfil(firebaseAuthUser.uid).set(donnees);
+    state.pseudo = donnees.pseudo;
+    sauvegarder();
+    afficherToast("Profil enregistré !");
+  } catch (e) {
+    afficherToast("Échec de l'enregistrement du profil.");
+  }
+  render();
+}
+
+function rendreSelecteurAvatar() {
+  const actuel = (profilLocal && profilLocal.avatar) || "🙂";
+  return AVATARS_DISPONIBLES.map(
+    (a) => `<button class="bc-avatar-choix ${a === actuel ? "bc-avatar-actif" : ""}" data-action="choisir-avatar" data-avatar="${a}">${a}</button>`
+  ).join("");
+}
+
+function rendreSelecteurSucces() {
+  const choisis = (profilLocal && profilLocal.succesAffiches) || [];
+  const debloques = SUCCES.filter((s) => state.succesDebloques.includes(s.id));
+  if (!debloques.length) return `<p class="bc-empty">Débloque des succès pour pouvoir les afficher sur ton profil.</p>`;
+  return debloques
+    .map((s) => {
+      const actif = choisis.includes(s.id);
+      return `<label class="bc-succes-choix ${actif ? "bc-succes-choix-actif" : ""}">
+        <input type="checkbox" ${actif ? "checked" : ""} data-action="basculer-succes-affiche" data-id="${s.id}">
+        ${escHtml(s.titre)}
+      </label>`;
+    })
+    .join("");
+}
+
+function rendreApercuProfil() {
+  const p = profilLocal || {};
+  const niveau = niveauPourXp(state.stats.xp || 0);
+  const rang = rangPourNiveau(niveau);
+  const succesChoisis = (p.succesAffiches || []).map((id) => SUCCES.find((s) => s.id === id)).filter(Boolean);
+  return `
+    <div class="bc-profil-apercu" style="border-color:${p.couleurCadre || "#d8b46a"}; background:${p.couleurFond || "#201931"};">
+      <div class="bc-profil-avatar">${p.avatar || "🙂"}</div>
+      <p class="bc-profil-pseudo">${escHtml(p.pseudo || "Sans pseudo")}</p>
+      <p class="bc-profil-stats">Niveau ${niveau} · ${escHtml(rang)} · Prestige ${state.prestige || 0}</p>
+      <div class="bc-profil-succes">
+        ${succesChoisis.map((s) => `<span class="bc-profil-succes-badge" title="${escHtml(s.titre)}">🏆</span>`).join("") || '<span style="opacity:.5;font-size:11px;">Aucun succès affiché</span>'}
+      </div>
+    </div>`;
+}
+
+function renderCompte() {
+  if (!compteConfigure()) {
+    return `<div class="bc-empty">Le système de compte n'est pas encore configuré (voir les instructions dans classement.js).</div>`;
+  }
+  if (!firebaseAuthUser) {
+    return `
+      <div class="bc-card" style="max-width:420px;">
+        <p class="bc-card-nom" style="margin-bottom:8px;">Mon compte</p>
+        <p class="bc-card-sub" style="margin-bottom:14px;">Crée un compte pour retrouver ta progression sur n'importe quel appareil.</p>
+        <div class="bc-code-row" style="flex-direction:column; max-width:none; margin-bottom:8px;">
+          <input type="email" id="champ-email-compte" placeholder="Adresse email">
+        </div>
+        <div class="bc-code-row" style="flex-direction:column; max-width:none; margin-bottom:14px;">
+          <input type="password" id="champ-mdp-compte" placeholder="Mot de passe (6 caractères min.)">
+        </div>
+        <div class="bc-code-row" style="max-width:none;">
+          <button class="bc-btn bc-btn-plein" style="flex:1;" data-action="creer-compte">Créer un compte</button>
+          <button class="bc-btn bc-btn-fantome" style="flex:1;" data-action="connecter-compte">Se connecter</button>
+        </div>
+        <div class="bc-msg" id="msg-compte"></div>
+      </div>`;
+  }
+  if (!profilLocal || profilChargeUid !== firebaseAuthUser.uid) {
+    chargerProfil().then(() => { if (ui.tab === "compte") render(); });
+    return `<div class="bc-empty">Chargement du profil…</div>`;
+  }
+  return `
+    <div class="bc-card" style="max-width:460px; margin-bottom:18px;">
+      <p class="bc-card-nom" style="margin-bottom:6px;">Connecté</p>
+      <p class="bc-card-sub" style="margin-bottom:12px;">${escHtml(firebaseAuthUser.email)}</p>
+      <p style="font-size:12px; color:var(--bc-emerald); margin-bottom:14px;">☁️ Ta sauvegarde est synchronisée avec ce compte.</p>
+      <button class="bc-btn bc-btn-fantome" data-action="deconnecter-compte">Se déconnecter</button>
+    </div>
+
+    <p class="bc-categorie-titre" style="margin-bottom:10px;">Personnalisation du profil</p>
+    <div class="bc-card" style="max-width:460px;">
+      <label style="font-size:12px; color:var(--bc-text-dim); display:block; margin-bottom:4px;">Pseudo</label>
+      <input type="text" id="champ-pseudo-profil" maxlength="20" value="${escAttr(profilLocal.pseudo || "")}" style="margin-bottom:14px; width:100%;">
+
+      <label style="font-size:12px; color:var(--bc-text-dim); display:block; margin-bottom:6px;">Avatar</label>
+      <div class="bc-avatar-grille">${rendreSelecteurAvatar()}</div>
+
+      <label style="font-size:12px; color:var(--bc-text-dim); display:block; margin:14px 0 6px;">Couleurs</label>
+      <div class="bc-row" style="margin-bottom:14px; gap:16px;">
+        <label style="font-size:12px; display:flex; align-items:center; gap:6px;">Cadre <input type="color" id="champ-couleur-cadre" value="${profilLocal.couleurCadre || "#d8b46a"}"></label>
+        <label style="font-size:12px; display:flex; align-items:center; gap:6px;">Fond <input type="color" id="champ-couleur-fond" value="${profilLocal.couleurFond || "#201931"}"></label>
+      </div>
+
+      <label style="font-size:12px; color:var(--bc-text-dim); display:block; margin-bottom:6px;">Succès affichés (3 max)</label>
+      <div class="bc-succes-liste">${rendreSelecteurSucces()}</div>
+
+      <button class="bc-btn bc-btn-plein" style="margin-top:16px;" data-action="enregistrer-profil">Enregistrer le profil</button>
+    </div>
+
+    <p class="bc-categorie-titre" style="margin:18px 0 10px;">Aperçu</p>
+    ${rendreApercuProfil()}`;
+}
+
+/* =====================================================================
+   AMIS & CADEAUX — recherche par pseudo, ajout/retrait, et un "Coffre
+   Multi" (voir contenu.js, champ exclusifCadeau) qui ne s'obtient
+   jamais en boutique, uniquement offert par un ami.
+   ===================================================================== */
+
+let listeAmisChargee = null;
+let cadeauxRecus = null;
+let resultatsRechercheAmis = [];
+
+async function rechercherAmis(terme) {
+  if (!firebaseAuthUser) return;
+  const termeBas = (terme || "").trim().toLowerCase();
+  if (!termeBas) { resultatsRechercheAmis = []; const z = document.getElementById("bc-amis-resultats"); if (z) z.innerHTML = ""; return; }
+  try {
+    const snap = await firebase.database().ref("profils").once("value");
+    const tous = snap.val() || {};
+    resultatsRechercheAmis = Object.entries(tous)
+      .filter(([uid, p]) => uid !== firebaseAuthUser.uid && p.pseudo && p.pseudo.toLowerCase().includes(termeBas))
+      .map(([uid, p]) => ({ uid, ...p }))
+      .slice(0, 20);
+  } catch (e) {
+    resultatsRechercheAmis = [];
+  }
+  const zone = document.getElementById("bc-amis-resultats");
+  if (zone) zone.innerHTML = rendreResultatsRecherche();
+}
+
+async function chargerListeAmis() {
+  if (!firebaseAuthUser) return;
+  try {
+    const snap = await refAmis(firebaseAuthUser.uid).once("value");
+    const donnees = snap.val() || {};
+    listeAmisChargee = Object.entries(donnees).map(([uid, v]) => ({ uid, ...v }));
+  } catch (e) {
+    listeAmisChargee = [];
+  }
+}
+
+async function chargerCadeauxRecus() {
+  if (!firebaseAuthUser) return;
+  try {
+    const snap = await refCadeaux(firebaseAuthUser.uid).once("value");
+    const donnees = snap.val() || {};
+    cadeauxRecus = Object.entries(donnees).map(([id, v]) => ({ id, ...v }));
+  } catch (e) {
+    cadeauxRecus = [];
+  }
+}
+
+async function ajouterAmi(uid, pseudo) {
+  if (!firebaseAuthUser) return;
+  await refAmis(firebaseAuthUser.uid).child(uid).set({ pseudo, depuis: Date.now() });
+  afficherToast(pseudo + " ajouté à tes amis !");
+  await chargerListeAmis();
+  render();
+}
+
+async function retirerAmi(uid) {
+  if (!firebaseAuthUser) return;
+  await refAmis(firebaseAuthUser.uid).child(uid).remove();
+  await chargerListeAmis();
+  render();
+}
+
+function ouvrirChoixCadeau(uid, pseudo) {
+  const zone = document.getElementById("bc-cadeau-choix-" + uid);
+  if (!zone) return;
+  const visible = zone.style.display !== "none";
+  zone.style.display = visible ? "none" : "block";
+  if (!visible) {
+    const mesBoites = Object.entries(state.boites)
+      .filter(([, q]) => q > 0)
+      .map(([id]) => BOITES_PAR_ID[id])
+      .filter(Boolean);
+    zone.innerHTML = mesBoites.length
+      ? mesBoites.map((b) => `<button class="bc-lien" data-action="envoyer-cadeau" data-uid="${uid}" data-pseudo="${escAttr(pseudo)}" data-box="${b.id}">${escHtml(b.nom)} (×${state.boites[b.id]})</button>`).join(" · ")
+      : `<span style="font-size:12px;color:var(--bc-text-mute);">Tu n'as aucune boîte à offrir.</span>`;
+  }
+}
+
+async function envoyerCadeau(amiUid, amiPseudo, boxId) {
+  if (!firebaseAuthUser) return;
+  const box = BOITES_PAR_ID[boxId];
+  if (!box || (state.boites[boxId] || 0) < 1) return;
+  state.boites[boxId] -= 1;
+  sauvegarder();
+  render();
+  try {
+    await refCadeaux(amiUid).push({
+      boxId,
+      boxNom: box.nom,
+      deUid: firebaseAuthUser.uid,
+      dePseudo: (profilLocal && profilLocal.pseudo) || state.pseudo || "Un ami",
+      date: Date.now(),
+    });
+    afficherToast("Cadeau envoyé à " + amiPseudo + " !");
+  } catch (e) {
+    // échec d'envoi : on rend la boîte au joueur
+    state.boites[boxId] += 1;
+    sauvegarder();
+    afficherToast("Échec de l'envoi du cadeau.");
+    render();
+  }
+}
+
+async function reclamerCadeau(id, boxId, boxNom, dePseudo) {
+  if (!firebaseAuthUser) return;
+  if (!(boxId in state.boites)) state.boites[boxId] = 0;
+  state.boites[boxId] += 1;
+  sauvegarder();
+  try {
+    await refCadeaux(firebaseAuthUser.uid).child(id).remove();
+  } catch (e) { /* tant pis, il restera visible mais la boîte est déjà à toi */ }
+  afficherToast("Tu as reçu : " + boxNom + " (de " + dePseudo + ") !");
+  await chargerCadeauxRecus();
+  render();
+}
+
+function rendreResultatsRecherche() {
+  if (!resultatsRechercheAmis.length) return `<p class="bc-empty">Aucun résultat.</p>`;
+  const mesAmisUids = (listeAmisChargee || []).map((a) => a.uid);
+  return resultatsRechercheAmis
+    .map((p) => {
+      const dejaAmi = mesAmisUids.includes(p.uid);
+      return `<div class="bc-ami-ligne">
+        <span class="bc-ami-avatar">${escHtml(p.avatar || "🙂")}</span>
+        <span class="bc-ami-pseudo">${escHtml(p.pseudo || "?")}</span>
+        <span class="bc-ami-niveau">Niv. ${p.niveau || 1}</span>
+        ${dejaAmi ? `<span class="bc-lien" style="opacity:.5;">déjà ami</span>` : `<button class="bc-lien" data-action="ajouter-ami" data-uid="${p.uid}" data-pseudo="${escAttr(p.pseudo || "?")}">ajouter</button>`}
+      </div>`;
+    })
+    .join("");
+}
+
+function rendreListeAmis() {
+  if (listeAmisChargee === null) return `<p class="bc-empty">Chargement…</p>`;
+  if (!listeAmisChargee.length) return `<p class="bc-empty">Pas encore d'amis. Utilise la recherche ci-dessus !</p>`;
+  return listeAmisChargee
+    .map(
+      (a) => `
+    <div class="bc-ami-ligne">
+      <span class="bc-ami-pseudo">${escHtml(a.pseudo || "?")}</span>
+      <button class="bc-lien" data-action="ouvrir-envoi-cadeau" data-uid="${a.uid}" data-pseudo="${escAttr(a.pseudo || "?")}">🎁 offrir</button>
+      <button class="bc-lien" data-action="retirer-ami" data-uid="${a.uid}">retirer</button>
+    </div>
+    <div id="bc-cadeau-choix-${a.uid}" class="bc-cadeau-choix" style="display:none;"></div>`
+    )
+    .join("");
+}
+
+function rendreCadeauxRecus() {
+  if (!cadeauxRecus || !cadeauxRecus.length) return "";
+  return `
+    <div class="bc-card" style="max-width:460px; margin-bottom:18px; border-color:var(--bc-emerald);">
+      <p class="bc-card-nom" style="margin-bottom:10px;">🎁 Cadeaux reçus</p>
+      ${cadeauxRecus
+        .map(
+          (c) => `
+        <div class="bc-ami-ligne">
+          <span>${escHtml(c.boxNom)} — de ${escHtml(c.dePseudo)}</span>
+          <button class="bc-btn bc-btn-plein bc-btn-petit" data-action="reclamer-cadeau" data-id="${c.id}" data-box="${c.boxId}" data-boxnom="${escAttr(c.boxNom)}" data-depseudo="${escAttr(c.dePseudo)}">Réclamer</button>
+        </div>`
+        )
+        .join("")}
+    </div>`;
+}
+
+function renderAmis() {
+  if (!compteConfigure()) {
+    return `<div class="bc-empty">L'onglet Amis nécessite le système de compte (voir classement.js).</div>`;
+  }
+  if (!firebaseAuthUser) {
+    return `<div class="bc-empty">Connecte-toi (onglet Compte) pour ajouter des amis.</div>`;
+  }
+  if (listeAmisChargee === null) {
+    chargerListeAmis().then(() => { if (ui.tab === "amis") render(); });
+  }
+  if (cadeauxRecus === null) {
+    chargerCadeauxRecus().then(() => { if (ui.tab === "amis") render(); });
+  }
+  return `
+    <div class="bc-card" style="max-width:460px; margin-bottom:18px;">
+      <p class="bc-card-nom" style="margin-bottom:10px;">Rechercher un ami</p>
+      <div class="bc-code-row">
+        <input type="text" id="champ-recherche-amis" placeholder="Pseudo à rechercher">
+        <button class="bc-btn bc-btn-plein bc-btn-petit" data-action="rechercher-amis">Chercher</button>
+      </div>
+      <div id="bc-amis-resultats" style="margin-top:10px;"></div>
+    </div>
+
+    ${rendreCadeauxRecus()}
+
+    <p class="bc-categorie-titre" style="margin-bottom:10px;">Mes amis (${listeAmisChargee ? listeAmisChargee.length : 0})</p>
+    ${rendreListeAmis()}`;
+}
+
+/* =====================================================================
    8. ANIMATION — ROULETTE DE CASINO
    ===================================================================== */
 
-function jouerAnimationReel(box, itemGagnant, reelHost) {
+/* Petits bruitages générés en Web Audio API (aucun fichier requis) :
+   un "tic" pendant que la roulette tourne, puis un son qui monte en
+   intensité avec la rareté obtenue, ou une fanfare spéciale pour une
+   variante Golden/Mega/Ultra. Coupables via le bouton 🔊/🔇 des sons de jeu. */
+
+let contexteAudioJeu = null;
+function ctxJeu() {
+  if (state.sonsJeuCoupes) return null;
+  if (!contexteAudioJeu) {
+    try { contexteAudioJeu = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch (e) { return null; }
+  }
+  if (contexteAudioJeu.state === "suspended") contexteAudioJeu.resume();
+  return contexteAudioJeu;
+}
+
+function jouerTic() {
+  const ctx = ctxJeu();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = "square";
+  osc.frequency.value = 1200;
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.07, t + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.04);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(t);
+  osc.stop(t + 0.05);
+}
+
+function planifierTics(dureeSec) {
+  const dureeMs = dureeSec * 1000;
+  const handles = [];
+  let t = 0;
+  let intervalle = 70;
+  while (t < dureeMs) {
+    handles.push(setTimeout(jouerTic, t));
+    t += intervalle;
+    intervalle = Math.min(intervalle * 1.09, 260);
+  }
+  return handles;
+}
+function annulerTics(handles) {
+  handles.forEach((h) => clearTimeout(h));
+}
+
+function jouerNoteSimple(ctx, freq, debut, duree, volume, type) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type || "triangle";
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0.0001, debut);
+  gain.gain.exponentialRampToValueAtTime(volume, debut + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.0001, debut + duree);
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.start(debut);
+  osc.stop(debut + duree + 0.02);
+}
+
+function jouerSonRevelation(rarete, variante) {
+  const ctx = ctxJeu();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  if (variante) {
+    const sequences = {
+      golden: [660, 880, 1100],
+      mega: [660, 880, 1100, 1320],
+      ultra: [660, 880, 1100, 1320, 1760, 2200],
+    };
+    (sequences[variante] || sequences.golden).forEach((freq, i) => jouerNoteSimple(ctx, freq, t + i * 0.1, 0.35, 0.2, "sine"));
+    return;
+  }
+  const index = INDEX_RARETE[rarete] || 0;
+  const total = Math.max(1, RARETES.length - 1);
+  const freqBase = 300 + (index / total) * 700;
+  const estPrestige = index >= SEUIL_PRESTIGE;
+  const nbNotes = estPrestige ? 3 : index >= total - 2 ? 2 : 1;
+  for (let i = 0; i < nbNotes; i++) {
+    jouerNoteSimple(ctx, freqBase * Math.pow(1.5, i), t + i * 0.09, 0.3, 0.16, "triangle");
+  }
+}
+
+function jouerAnimationReel(box, itemGagnant, reelHost, variante) {
   return new Promise((resolve) => {
     const poids = box.items.map((it) => poidsEffectif(box, it, state.chanceActuelle));
     const N_AVANT = 26, N_APRES = 4;
@@ -2703,22 +3495,27 @@ function jouerAnimationReel(box, itemGagnant, reelHost) {
       void track.offsetHeight;
       track.style.transition = `transform ${duree}s cubic-bezier(0.12,0.85,0.15,1)`;
       requestAnimationFrame(() => { track.style.transform = `translateX(${decalage}px)`; });
+      const ticsPlanifies = planifierTics(duree);
 
       let termine = false;
       function finaliser() {
         if (termine) return;
         termine = true;
+        annulerTics(ticsPlanifies);
         track.style.transition = "none";
         track.style.transform = `translateX(${decalage}px)`;
         const cibleEl = track.children[indexGagnant];
         cibleEl.classList.add("bc-gagnant");
+        if (variante) cibleEl.classList.add("bc-variante-" + variante);
         const palierGagnant = PALIER[itemGagnant.rarete];
         const estPrestige = INDEX_RARETE[itemGagnant.rarete] >= SEUIL_PRESTIGE;
-        resultatEl.innerHTML = estPrestige
-          ? `<span class="bc-jackpot">✦ ${escHtml(itemGagnant.nom)} — ${palierGagnant.label} ✦</span>`
+        const etiquetteVariante = variante ? `<span class="bc-variante-tag bc-variante-${variante}">${variante.toUpperCase()}</span> ` : "";
+        resultatEl.innerHTML = estPrestige || variante
+          ? `<span class="bc-jackpot">✦ ${etiquetteVariante}${escHtml(itemGagnant.nom)} — ${palierGagnant.label} ✦</span>`
           : `<span>${escHtml(itemGagnant.nom)} — ${palierGagnant.label}</span>`;
+        jouerSonRevelation(itemGagnant.rarete, variante);
         btnSkip.remove();
-        setTimeout(resolve, estPrestige ? 700 : 250);
+        setTimeout(resolve, estPrestige || variante ? 700 : 250);
       }
       track.addEventListener("transitionend", finaliser, { once: true });
       btnSkip.addEventListener("click", finaliser);
@@ -2751,15 +3548,16 @@ async function lancerOuverture(box, qte) {
   }
 
   for (let i = 0; i < qte; i++) {
-    const item = tirerItem(box, state.chanceActuelle);
+    const { item, variante } = tirerItem(box, state.chanceActuelle);
     state.collection[item.id] = (state.collection[item.id] || 0) + 1;
+    enregistrerVariante(item.id, variante);
     state.boites[box.id] -= 1;
     if (state.boitesAchetees[box.id] > 0) state.boitesAchetees[box.id] -= 1;
     state.stats.boitesOuvertesTotal += 1;
     ajouterXp(xpPourOuverture(box));
-    ui.dernierLog.items.unshift({ nom: item.nom, rarete: item.rarete });
+    ui.dernierLog.items.unshift({ nom: item.nom, rarete: item.rarete, variante });
     if (!sauterReste && reelHost) {
-      await jouerAnimationReel(box, item, reelHost);
+      await jouerAnimationReel(box, item, reelHost, variante);
     }
     renderHeader();
   }
@@ -2886,6 +3684,23 @@ function importerSauvegarde(fichier) {
 
 const racine = document.getElementById("bc-layout");
 
+// Le portail de connexion est en dehors de #bc-layout (pour rester visible
+// même quand celui-ci est masqué) : il a donc sa propre petite délégation.
+const portailConnexion = document.getElementById("bc-portail-connexion");
+if (portailConnexion) {
+  portailConnexion.addEventListener("click", (e) => {
+    const el = e.target.closest("[data-action]");
+    if (!el) return;
+    if (el.dataset.action === "creer-compte-portail") creerCompte("champ-email-portail", "champ-mdp-portail", "msg-portail");
+    if (el.dataset.action === "connecter-compte-portail") connecterCompte("champ-email-portail", "champ-mdp-portail", "msg-portail");
+  });
+  portailConnexion.addEventListener("keydown", (e) => {
+    if (e.target && e.target.id === "champ-mdp-portail" && e.key === "Enter") {
+      connecterCompte("champ-email-portail", "champ-mdp-portail", "msg-portail");
+    }
+  });
+}
+
 racine.addEventListener("click", (e) => {
   const el = e.target.closest("[data-action]");
   if (!el || el.disabled) return;
@@ -2996,6 +3811,14 @@ racine.addEventListener("click", (e) => {
     fusionner(el.dataset.box, el.dataset.item);
     return;
   }
+  if (action === "fusionner-max") {
+    fusionnerMax(el.dataset.box, el.dataset.item);
+    return;
+  }
+  if (action === "fusionner-tout") {
+    fusionnerTout();
+    return;
+  }
   if (action === "reclamer-bonus") {
     reclamerBonus();
     return;
@@ -3023,6 +3846,7 @@ racine.addEventListener("click", (e) => {
     (dlc.boites || []).forEach((b) => { if (!(b.id in state.boites)) state.boites[b.id] = 0; });
     state.dlcDebloques.push(dlc.id);
     ajouterXp(20);
+    SUCCES = construireSucces();
     sauvegarder();
     afficherToast("DLC débloqué : " + dlc.nom);
     verifierSucces();
@@ -3057,6 +3881,71 @@ racine.addEventListener("click", (e) => {
   }
   if (action === "rafraichir-classement") {
     chargerClassement();
+    return;
+  }
+  if (action === "creer-compte") {
+    creerCompte();
+    return;
+  }
+  if (action === "connecter-compte") {
+    connecterCompte();
+    return;
+  }
+  if (action === "deconnecter-compte") {
+    deconnecterCompte();
+    return;
+  }
+  if (action === "choisir-avatar") {
+    if (profilLocal) profilLocal.avatar = el.dataset.avatar;
+    render();
+    return;
+  }
+  if (action === "basculer-succes-affiche") {
+    if (!profilLocal) return;
+    if (!profilLocal.succesAffiches) profilLocal.succesAffiches = [];
+    const liste = profilLocal.succesAffiches;
+    const id = el.dataset.id;
+    const index = liste.indexOf(id);
+    if (index >= 0) liste.splice(index, 1);
+    else if (liste.length < 3) liste.push(id);
+    else { afficherToast("Maximum 3 succès affichés."); return; }
+    render();
+    return;
+  }
+  if (action === "enregistrer-profil") {
+    if (profilLocal) {
+      const champPseudo = document.getElementById("champ-pseudo-profil");
+      const champCadre = document.getElementById("champ-couleur-cadre");
+      const champFond = document.getElementById("champ-couleur-fond");
+      profilLocal.pseudo = (champPseudo.value || "").trim().slice(0, 20) || "Joueur";
+      profilLocal.couleurCadre = champCadre.value;
+      profilLocal.couleurFond = champFond.value;
+    }
+    enregistrerProfil();
+    return;
+  }
+  if (action === "rechercher-amis") {
+    rechercherAmis(document.getElementById("champ-recherche-amis").value);
+    return;
+  }
+  if (action === "ajouter-ami") {
+    ajouterAmi(el.dataset.uid, el.dataset.pseudo);
+    return;
+  }
+  if (action === "retirer-ami") {
+    retirerAmi(el.dataset.uid);
+    return;
+  }
+  if (action === "ouvrir-envoi-cadeau") {
+    ouvrirChoixCadeau(el.dataset.uid, el.dataset.pseudo);
+    return;
+  }
+  if (action === "envoyer-cadeau") {
+    envoyerCadeau(el.dataset.uid, el.dataset.pseudo, el.dataset.box);
+    return;
+  }
+  if (action === "reclamer-cadeau") {
+    reclamerCadeau(el.dataset.id, el.dataset.box, el.dataset.boxnom, el.dataset.depseudo);
     return;
   }
   if (action === "envoyer-chat") {
@@ -3119,6 +4008,13 @@ racine.addEventListener("click", (e) => {
   }
   if (action === "basculer-musique") {
     basculerMusique();
+    return;
+  }
+  if (action === "basculer-sons-jeu") {
+    state.sonsJeuCoupes = !state.sonsJeuCoupes;
+    sauvegarder();
+    const btn = document.getElementById("bc-bouton-sons-jeu");
+    if (btn) btn.textContent = state.sonsJeuCoupes ? "🔇" : "🔊";
     return;
   }
   if (action === "ouvrir-playlist") {
@@ -3265,6 +4161,14 @@ racine.addEventListener("keydown", (e) => {
     const btn = racine.querySelector('[data-action="valider-edition-chat"]');
     if (btn) btn.click();
   }
+  if (e.target && e.target.id === "champ-recherche-amis" && e.key === "Enter") {
+    const btn = racine.querySelector('[data-action="rechercher-amis"]');
+    if (btn) btn.click();
+  }
+  if (e.target && e.target.id === "champ-mdp-compte" && e.key === "Enter") {
+    const btn = racine.querySelector('[data-action="connecter-compte"]');
+    if (btn) btn.click();
+  }
 });
 
 /* =====================================================================
@@ -3284,8 +4188,27 @@ function init() {
     afficherErreursContenu(erreurs);
     return;
   }
+  // On charge la sauvegarde LOCALE en tout premier, avant même de savoir si
+  // un compte existe : si le joueur crée un compte juste après, c'est CETTE
+  // progression qui sera envoyée dans le cloud (les joueurs déjà en cours de
+  // partie avant l'ajout des comptes ne perdent donc rien).
   chargerEtat();
   appliquerApparence();
+
+  if (compteConfigure() && initialiserFirebaseAuth()) {
+    // Le jeu ne démarre réellement qu'une fois connecté : voir
+    // initialiserFirebaseAuth() / demarrerJeuSiPasEncore(). Filet de
+    // sécurité si Firebase tarde à répondre au tout premier chargement.
+    setTimeout(() => { if (!jeuDemarre) afficherPortailConnexion(); }, 1500);
+  } else {
+    // Pas de système de compte configuré : le jeu démarre normalement,
+    // sans portail de connexion.
+    demarrerJeuSiPasEncore();
+  }
+}
+
+function initJeu() {
+  verifierStreakConnexion();
   assurerMissions();
   SUCCES = construireSucces();
   verifierSucces();
