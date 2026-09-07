@@ -51,20 +51,66 @@
    3. C'est tout — le reste (création de compte, connexion, sauvegarde
       liée au compte) est déjà géré par le jeu.
 
-   Règles Realtime Database recommandées (chaque joueur ne peut lire/
-   écrire QUE sa propre sauvegarde, jamais celle d'un autre) :
+   Règles Realtime Database COMPLÈTES et à jour (chaque joueur ne peut
+   lire/écrire QUE sa propre sauvegarde, jamais celle d'un autre) — à
+   copier intégralement dans Realtime Database > Règles, en remplacement
+   de tes règles actuelles :
      {
        "rules": {
          "classement": { ".read": true, ".write": true },
-         "chat": { ".read": true, ".write": true },
          "comptes": {
            "$uid": {
              ".read": "auth != null && auth.uid === $uid",
              ".write": "auth != null && auth.uid === $uid"
            }
+         },
+         "profils": {
+           ".read": true,
+           "$uid": {
+             ".write": "auth != null && auth.uid === $uid"
+           }
+         },
+         "amis": {
+           "$uid": {
+             ".read": "auth != null && auth.uid === $uid",
+             ".write": "auth != null"
+           }
+         },
+         "demandes": {
+           "$uid": {
+             ".read": "auth != null && auth.uid === $uid",
+             ".write": "auth != null"
+           }
+         },
+         "cadeaux": {
+           "$uid": {
+             ".read": "auth != null && auth.uid === $uid",
+             ".write": "auth != null"
+           }
+         },
+         "mp": {
+           "$conv": {
+             ".read": "auth != null && $conv.contains(auth.uid)",
+             ".write": "auth != null && $conv.contains(auth.uid)"
+           }
          }
        }
      }
+
+   ATTENTION au nœud "profils" : le ".read": true doit être posé sur
+   "profils" LUI-MÊME, pas seulement sur "profils/$uid". La recherche
+   d'amis lit TOUTE la liste des profils en une fois pour la filtrer —
+   si le ".read" n'est autorisé qu'au niveau de chaque profil individuel,
+   Firebase refuse cette lecture groupée et la recherche ne trouve
+   jamais rien, silencieusement (c'est l'erreur la plus fréquente ici).
+
+   Pourquoi ".write": "auth != null" (et pas "auth.uid === $uid") sur
+   "amis" et "demandes" : accepter une demande d'ami doit écrire des
+   deux côtés à la fois (ta liste ET celle de l'autre), et envoyer une
+   demande écrit directement dans la boîte de réception du destinataire
+   — dans les deux cas, ce n'est pas "ton" nœud à toi. Comme évoqué,
+   la sécurité fine n'est pas la priorité ici (il n'y a rien de
+   confidentiel à part la sauvegarde, déjà bien protégée par "comptes").
    ===================================================================== */
 
 const CLASSEMENT_CONFIG = {

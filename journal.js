@@ -15,6 +15,16 @@
 const JOURNAL_MISES_A_JOUR = [
   {
     date: "07/09/2026",
+    titre: "Mise à jour 6.1 - Amis et chat améliorés !",
+    texte: "Vous pouvez à présent ajouter des amis et discuter avec eux avec des chat privés. Il est maintenant possible d'offrir des boîtes exclusive 'multi' à vos amis.",
+  },
+  {
+    date: "07/09/2026",
+    titre: "Mise à jour 6.0 - Comptes joueurs et sauvegarde en ligne !",
+    texte: "Le système de comptes joueurs est enfin disponible ! Tu peux maintenant créer un compte avec ton email et ton mot de passe pour sauvegarder ta progression en ligne. Cela te permet de retrouver ta sauvegarde sur n'importe quel appareil, et de sécuriser tes données.",
+  },
+  {
+    date: "07/09/2026",
     titre: "Mise à jour 5.3 - Nouveau DLCs et tutoriel !",
     texte: "Le tutoriel a été amélioré pour être plus clair et plus simple à suivre. De nouveaux DLCs sont disponibles : nouvelle boîte exclusive et nouveaux skins pour l'interface.",
   },

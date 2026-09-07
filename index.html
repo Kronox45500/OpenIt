@@ -61,7 +61,7 @@
 }
 .bc-icon-btn:hover { background: #352a4f; }
 .bc-icon-btn-actif { background: var(--bc-gold); border-color: var(--bc-gold); color: #1c1530; }
-.bc-stats { display: flex; gap: 18px; }
+.bc-stats { display: flex; gap: 18px; flex-wrap: wrap; justify-content: flex-end; }
 .bc-stat { display: flex; flex-direction: column; align-items: flex-end; line-height: 1.15; }
 .bc-stat-value { font-family: 'Cinzel', serif; font-weight: 700; font-size: 18px; color: var(--bc-gold-soft); }
 .bc-stat-income .bc-stat-value { color: var(--bc-emerald); }
@@ -161,6 +161,7 @@
 .bc-ami-pseudo { font-weight: 600; flex: 1; }
 .bc-ami-niveau { color: var(--bc-text-mute); font-size: 11.5px; }
 .bc-cadeau-choix { font-size: 12px; padding: 6px 0 10px; }
+.bc-mp-panneau { padding: 10px 0 16px; border-top: 1px dashed var(--bc-border); margin-top: 4px; }
 .bc-cadeau-choix .bc-lien { margin-right: 4px; }
 .bc-tuto-titre { font-family: 'Cinzel', serif; font-weight: 700; font-size: 21px; color: var(--bc-gold-soft); margin: 0 0 14px; }
 .bc-tuto-texte { font-size: 14px; color: var(--bc-text-dim); line-height: 1.65; margin: 0; min-height: 110px; }
@@ -434,9 +435,16 @@
   cursor: pointer;
   animation: bc-bonus-pulse 1.3s ease-in-out infinite;
 }
-.bc-reset-btn { width: auto; padding: 6px 10px; font-size: 11px; color: var(--bc-danger); border-color: rgba(226,104,94,0.45); }
-.bc-aide-btn { width: 30px; padding: 6px 0; font-size: 13px; font-weight: 700; }
-.bc-volume-slider { width: 70px; accent-color: var(--bc-gold); cursor: pointer; }
+.bc-reset-btn { width: auto; padding: 6px 10px; font-size: 11px; color: var(--bc-danger); border-color: rgba(226,104,94,0.45); flex-shrink: 0; }
+.bc-aide-btn { width: 30px; padding: 6px 0; font-size: 13px; font-weight: 700; flex-shrink: 0; }
+.bc-volume-slider { width: 70px; accent-color: var(--bc-gold); cursor: pointer; flex-shrink: 0; }
+
+.bc-switch { position: relative; display: inline-block; width: 40px; height: 22px; flex-shrink: 0; }
+.bc-switch input { opacity: 0; width: 0; height: 0; }
+.bc-switch-slider { position: absolute; inset: 0; background: var(--bc-border-strong); border-radius: 22px; cursor: pointer; transition: background 0.2s; }
+.bc-switch-slider::before { content: ""; position: absolute; height: 16px; width: 16px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: transform 0.2s; }
+.bc-switch input:checked + .bc-switch-slider { background: var(--bc-gold); }
+.bc-switch input:checked + .bc-switch-slider::before { transform: translateX(18px); }
 
 .bc-playlist-controles { display: flex; justify-content: center; gap: 10px; }
 .bc-playlist-controles .bc-icon-btn { width: 38px; height: 38px; font-size: 16px; }

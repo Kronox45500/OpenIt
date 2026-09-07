@@ -257,6 +257,7 @@ function nouvelEtat() {
     sonsJeuCoupes: false,
     pseudo: null,
     idJoueurClassement: null,
+    classementMasque: false,
     notificationsChatCoupees: false,
     derniereMaj: Date.now(),
   };
@@ -1392,6 +1393,7 @@ function ajouterXp(montant) {
     } else {
       setTimeout(() => afficherToast(`🎖️ Niveau ${niveauApres} atteint — ${rangApres} !`), 300);
     }
+    if (classementConfigure()) envoyerScoreAutomatique(true);
   }
 }
 
@@ -1460,6 +1462,7 @@ function effectuerPrestige() {
   if (recompenseAtteinte) {
     setTimeout(() => afficherToast(`🎁 ${recompenseAtteinte.texte}`), 1400);
   }
+  if (classementConfigure()) envoyerScoreAutomatique(true);
   render();
   renderBonusBadge();
 }
@@ -1553,7 +1556,6 @@ const DEBLOCAGES_NIVEAU = {
   dlc: 6,
   stats: 7,
   classement: 7,
-  chat: 4,
   prestige: 12,
 };
 
@@ -1565,7 +1567,6 @@ const LABELS_DEBLOCAGE = {
   dlc: "L'onglet DLC",
   stats: "L'onglet Statistiques",
   classement: "L'onglet Classement",
-  chat: "L'onglet Chat",
   prestige: "L'onglet Prestige",
 };
 
@@ -1877,7 +1878,6 @@ const TABS = [
   { id: "classement", label: "Classement", render: renderClassement, debloquage: "classement" },
   { id: "compte", label: "Compte", render: renderCompte },
   { id: "amis", label: "Amis", render: renderAmis },
-  { id: "chat", label: "Chat", render: renderChat, debloquage: "chat" },
 ];
 
 function tabsVisibles() {
@@ -1901,8 +1901,7 @@ function renderContent() {
   const tab = visibles.find((t) => t.id === ui.tab) || visibles[0];
   document.getElementById("bc-content").innerHTML = tab.render();
   if (tab.id === "classement") chargerClassement();
-  if (tab.id === "chat") demarrerEcouteChat();
-  else arreterEcouteChat();
+  if (tab.id !== "amis") fermerConversation();
 }
 function feuilleDeRouteNiveaux() {
   const entrees = [];
@@ -2483,13 +2482,16 @@ function renderClassement() {
   const rang = rangPourNiveau(niveau);
   return `
     <div class="bc-card" style="max-width:440px; margin-bottom:20px;">
-      <p class="bc-card-nom" style="margin-bottom:10px;">Envoyer mon score</p>
-      <div class="bc-code-row">
-        <input type="text" id="champ-pseudo" placeholder="Ton pseudo" maxlength="20" value="${escAttr(state.pseudo || "")}">
-        <button class="bc-btn bc-btn-plein bc-btn-petit" data-action="envoyer-score">Envoyer</button>
+      <p class="bc-card-nom" style="margin-bottom:8px;">Ton classement</p>
+      <p class="bc-card-sub">Tu apparais automatiquement dans le classement mondial, tenu à jour tout seul pendant que tu joues.</p>
+      <p style="font-size:11.5px; color:var(--bc-text-mute); margin-top:8px;">Pseudo : <strong style="color:var(--bc-text-dim);">${escHtml(state.pseudo || "Joueur")}</strong> (modifiable dans l'onglet Compte) · Prestige ${state.prestige || 0} · Niveau ${niveau} · ${escHtml(rang)}</p>
+      <div class="bc-row" style="margin-top:14px; padding-top:12px; border-top:1px solid var(--bc-border);">
+        <span style="font-size:12.5px; color:var(--bc-text-dim);">Ne pas apparaître dans le classement</span>
+        <label class="bc-switch">
+          <input type="checkbox" ${state.classementMasque ? "checked" : ""} data-action="basculer-masquage-classement">
+          <span class="bc-switch-slider"></span>
+        </label>
       </div>
-      <p style="font-size:11.5px; color:var(--bc-text-mute); margin-top:8px;">Ton score actuel : Prestige ${state.prestige || 0} · Niveau ${niveau} · ${escHtml(rang)}</p>
-      <div class="bc-msg" id="msg-classement"></div>
     </div>
     <div class="bc-row" style="margin-bottom:10px;">
       <p class="bc-categorie-titre" style="margin:0;">Top joueurs</p>
@@ -2502,6 +2504,8 @@ function escAttr(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+let dernieresEntreesClassement = null;
+
 async function chargerClassement() {
   const zone = document.getElementById("bc-classement-tableau");
   if (!zone || !classementConfigure()) return;
@@ -2509,12 +2513,18 @@ async function chargerClassement() {
     zone.innerHTML = `<p class="bc-empty">Impossible d'initialiser Firebase — vérifie ta configuration dans classement.js et que les scripts Firebase sont bien chargés dans index.html.</p>`;
     return;
   }
-  zone.innerHTML = `<p class="bc-empty">Chargement du classement…</p>`;
+  // On ne montre "Chargement…" qu'au tout premier affichage : lors des
+  // rafraîchissements automatiques suivants, le tableau précédent reste
+  // visible pendant la requête, pour éviter un clignotement toutes les 15s.
+  if (dernieresEntreesClassement === null) {
+    zone.innerHTML = `<p class="bc-empty">Chargement du classement…</p>`;
+  }
   try {
     const snapshot = await firebase.database().ref("classement").once("value");
     const donnees = snapshot.val() || {};
     const entrees = Object.values(donnees);
     entrees.sort((a, b) => (b.score || 0) - (a.score || 0));
+    dernieresEntreesClassement = entrees;
     if (!entrees.length) {
       zone.innerHTML = `<p class="bc-empty">Aucun score pour l'instant. Sois le premier !</p>`;
       return;
@@ -2535,7 +2545,11 @@ async function chargerClassement() {
         </tbody>
       </table>`;
   } catch (e) {
-    zone.innerHTML = `<p class="bc-empty">Impossible de charger le classement (${escHtml(e.message || "erreur")}). Vérifie les règles de ta base Firebase (voir classement.js).</p>`;
+    // En cas d'échec sur un rafraîchissement automatique, on garde le
+    // tableau précédent affiché plutôt que de le remplacer par une erreur.
+    if (dernieresEntreesClassement === null) {
+      zone.innerHTML = `<p class="bc-empty">Impossible de charger le classement (${escHtml(e.message || "erreur")}). Vérifie les règles de ta base Firebase (voir classement.js).</p>`;
+    }
   }
 }
 
@@ -2577,233 +2591,169 @@ function envoyerScore() {
     });
 }
 
-/* =====================================================================
-   CHAT — utilise la même configuration Firebase que le classement (voir
-   classement.js). Messages diffusés en temps réel (écoute Firebase) entre
-   tous les joueurs présents sur l'onglet. Les mots interdits
-   (motsBannis.js) transforment tout le message en dièses avant même son
-   envoi. On peut modifier/supprimer ses propres messages (trace
-   visible), et un délai anti-spam limite la fréquence d'envoi.
-   ===================================================================== */
+/* Envoi automatique et silencieux du score, sans pseudo à saisir ni bouton
+   à cliquer : utilise state.pseudo (déjà rempli via le profil du compte,
+   ou un nom générique de secours), avec un anti-spam d'1 minute entre deux
+   envois. Appelé périodiquement pendant que le jeu tourne, et juste après
+   un changement de niveau ou un Prestige. */
+let dernierEnvoiScoreAuto = 0;
+const INTERVALLE_ENVOI_SCORE_AUTO = 60000;
 
-let derniersMessagesChat = null; // null = jamais chargé
-let messageEnEditionChat = null;
-let dernierEnvoiChat = 0;
-const DELAI_ANTI_SPAM_CHAT_MS = 3000;
-let contexteAudioNotif = null;
+function envoyerScoreAutomatique(forcer) {
+  if (!classementConfigure() || !initialiserFirebase()) return;
+  if (state.classementMasque) return;
+  const maintenant = Date.now();
+  if (!forcer && maintenant - dernierEnvoiScoreAuto < INTERVALLE_ENVOI_SCORE_AUTO) return;
+  dernierEnvoiScoreAuto = maintenant;
 
-function chatConfigure() {
-  return classementConfigure();
+  if (!state.pseudo || !state.pseudo.trim()) {
+    state.pseudo = "Joueur" + idJoueurClassement().slice(-5);
+    sauvegarder();
+  }
+  const score = state.prestige || 0;
+  const niveau = niveauPourXp(state.stats.xp || 0);
+  const rang = rangPourNiveau(niveau);
+  firebase
+    .database()
+    .ref("classement/" + idJoueurClassement())
+    .set({ pseudo: state.pseudo, score, niveau, rang, maj: Date.now() })
+    .catch(() => { /* échec silencieux : on retentera au prochain cycle */ });
 }
 
-function filtrerMessageChat(texte) {
+function supprimerDuClassement() {
+  if (!classementConfigure() || !initialiserFirebase()) return;
+  firebase
+    .database()
+    .ref("classement/" + idJoueurClassement())
+    .remove()
+    .catch(() => { /* échec silencieux */ });
+}
+
+/* =====================================================================
+   MESSAGES PRIVÉS ENTRE AMIS — utilise la même configuration Firebase que
+   le classement (voir classement.js). Chaque conversation vit dans son
+   propre nœud ("mp/uidA_uidB", trié pour que les deux amis pointent vers
+   le même endroit), lu en temps réel (écoute Firebase). Les mots
+   interdits (motsBannis.js) transforment tout message en dièses avant
+   même son envoi.
+   ===================================================================== */
+
+function filtrerMessage(texte) {
   const listeInterdits = typeof MOTS_BANNIS !== "undefined" && Array.isArray(MOTS_BANNIS) ? MOTS_BANNIS : [];
   const texteBas = texte.toLowerCase();
   const banni = listeInterdits.some((mot) => mot && texteBas.includes(String(mot).toLowerCase()));
   return banni ? "#".repeat(texte.length) : texte;
 }
 
-function jouerSonNotificationChat() {
-  if (state.notificationsChatCoupees) return;
-  try {
-    if (!contexteAudioNotif) contexteAudioNotif = new (window.AudioContext || window.webkitAudioContext)();
-    if (contexteAudioNotif.state === "suspended") contexteAudioNotif.resume();
-    const maintenant = contexteAudioNotif.currentTime;
-    const osc = contexteAudioNotif.createOscillator();
-    const gain = contexteAudioNotif.createGain();
-    osc.type = "sine";
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.0001, maintenant);
-    gain.gain.exponentialRampToValueAtTime(0.16, maintenant + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, maintenant + 0.35);
-    osc.connect(gain);
-    gain.connect(contexteAudioNotif.destination);
-    osc.start(maintenant);
-    osc.stop(maintenant + 0.36);
-  } catch (e) {
-    /* audio indisponible : tant pis, pas de son */
+function idConversation(uid1, uid2) {
+  return [uid1, uid2].sort().join("_");
+}
+function refConversation(uid1, uid2) {
+  return firebase.database().ref("mp/" + idConversation(uid1, uid2));
+}
+
+let conversationOuverteAvec = null;
+let conversationOuvertePseudo = "";
+let messagesConversation = null;
+let ecouteurConversationRef = null;
+let ecouteurConversationFn = null;
+let dernierEnvoiMp = 0;
+const DELAI_ANTI_SPAM_MP_MS = 2000;
+
+function ouvrirConversation(amiUid, amiPseudo) {
+  if (!firebaseAuthUser) return;
+  if (conversationOuverteAvec === amiUid) {
+    fermerConversation();
+    render();
+    return;
   }
-}
+  fermerConversation();
+  conversationOuverteAvec = amiUid;
+  conversationOuvertePseudo = amiPseudo;
+  messagesConversation = null;
+  render();
 
-function renderChat() {
-  if (!chatConfigure()) {
-    return `<div class="bc-empty">Le chat n'est pas encore configuré (il utilise la même configuration Firebase que le classement, voir classement.js).</div>`;
-  }
-  return `
-    <div class="bc-row" style="margin-bottom:10px;">
-      <p class="bc-categorie-titre" style="margin:0;">Chat</p>
-      <button class="bc-icon-btn" data-action="basculer-notif-chat" title="Notifications sonores">${state.notificationsChatCoupees ? "🔕" : "🔔"}</button>
-    </div>
-    <div id="bc-chat-messages" class="bc-chat-messages">${rendreMessagesChat()}</div>
-    <div class="bc-code-row" style="margin-top:12px;">
-      <input type="text" id="champ-chat" placeholder="${state.pseudo ? "Ton message..." : "Choisis un pseudo dans l'onglet Classement d'abord"}" maxlength="200" ${state.pseudo ? "" : "disabled"}>
-      <button class="bc-btn bc-btn-plein bc-btn-petit" id="bc-chat-btn-envoyer" data-action="envoyer-chat" ${state.pseudo ? "" : "disabled"}>Envoyer</button>
-    </div>
-    <div class="bc-msg" id="msg-chat"></div>`;
-}
-
-function rendreMessagesChat() {
-  if (derniersMessagesChat === null) return `<p class="bc-empty">Chargement…</p>`;
-  if (!derniersMessagesChat.length) return `<p class="bc-empty">Aucun message pour l'instant. Lance la discussion !</p>`;
-  return derniersMessagesChat
-    .map((m) => {
-      if (m.id === messageEnEditionChat) {
-        return `
-        <div class="bc-chat-ligne">
-          <span class="bc-chat-pseudo">${escHtml(m.pseudo || "?")}</span>
-          <div class="bc-code-row" style="margin-top:4px;">
-            <input type="text" id="champ-edit-chat" value="${escAttr(m.texte || "")}" maxlength="200">
-            <button class="bc-btn bc-btn-plein bc-btn-petit" data-action="valider-edition-chat" data-id="${m.id}">OK</button>
-            <button class="bc-btn bc-btn-fantome bc-btn-petit" data-action="annuler-edition-chat">✕</button>
-          </div>
-        </div>`;
-      }
-      const estMoi = m.idJoueur && m.idJoueur === state.idJoueurClassement;
-      const texteAffiche = m.supprime
-        ? `🗑️ <i>Message supprimé</i>`
-        : escHtml(m.texte || "") + (m.modifie ? ` <span class="bc-chat-modifie">(modifié)</span>` : "");
-      const controles = estMoi && !m.supprime
-        ? `<span class="bc-chat-controles">
-            <button class="bc-lien" data-action="editer-chat" data-id="${m.id}">modifier</button>
-            <button class="bc-lien" data-action="supprimer-chat" data-id="${m.id}">supprimer</button>
-          </span>`
-        : "";
-      return `
-      <div class="bc-chat-ligne">
-        <span class="bc-chat-pseudo">${escHtml(m.pseudo || "?")}</span>
-        <span class="bc-chat-texte">${texteAffiche}</span>
-        ${controles}
-      </div>`;
-    })
-    .join("");
-}
-
-let ecouteurChatRef = null;
-let ecouteurChatFn = null;
-
-function demarrerEcouteChat() {
-  if (!chatConfigure() || !initialiserFirebase()) return;
-  arreterEcouteChat();
-  const requete = firebase.database().ref("chat").orderByChild("date").limitToLast(50);
-  ecouteurChatFn = (snapshot) => {
+  const ref = refConversation(firebaseAuthUser.uid, amiUid);
+  ecouteurConversationFn = (snapshot) => {
     const donnees = snapshot.val() || {};
-    const nouvellesEntrees = Object.entries(donnees).map(([id, val]) => ({ id, ...val }));
-    nouvellesEntrees.sort((a, b) => (a.date || 0) - (b.date || 0));
-
-    const premierChargement = derniersMessagesChat === null;
-    const idsConnus = new Set((derniersMessagesChat || []).map((m) => m.id));
-    const nouveauxMessages = nouvellesEntrees.filter((m) => !idsConnus.has(m.id));
-    const nouveauDautrui = !premierChargement && nouveauxMessages.some((m) => m.idJoueur !== state.idJoueurClassement);
-    if (nouveauDautrui) jouerSonNotificationChat();
-
-    derniersMessagesChat = nouvellesEntrees;
-    const zone = document.getElementById("bc-chat-messages");
+    messagesConversation = Object.entries(donnees)
+      .map(([id, v]) => ({ id, ...v }))
+      .sort((a, b) => (a.date || 0) - (b.date || 0));
+    const zone = document.getElementById("bc-mp-messages");
     if (zone) {
-      zone.innerHTML = rendreMessagesChat();
+      zone.innerHTML = rendreMessagesMp();
       zone.scrollTop = zone.scrollHeight;
     }
   };
-  requete.on("value", ecouteurChatFn);
-  ecouteurChatRef = requete;
+  ref.on("value", ecouteurConversationFn);
+  ecouteurConversationRef = ref;
 }
 
-function arreterEcouteChat() {
-  if (ecouteurChatRef && ecouteurChatFn) ecouteurChatRef.off("value", ecouteurChatFn);
-  ecouteurChatRef = null;
-  ecouteurChatFn = null;
+function fermerConversation() {
+  if (ecouteurConversationRef && ecouteurConversationFn) ecouteurConversationRef.off("value", ecouteurConversationFn);
+  ecouteurConversationRef = null;
+  ecouteurConversationFn = null;
+  conversationOuverteAvec = null;
+  conversationOuvertePseudo = "";
+  messagesConversation = null;
 }
 
-function demarrerCompteAReboursEnvoiChat() {
-  const miseAJour = () => {
-    const btn = document.getElementById("bc-chat-btn-envoyer");
-    if (!btn) return;
-    const restant = Math.ceil((DELAI_ANTI_SPAM_CHAT_MS - (Date.now() - dernierEnvoiChat)) / 1000);
-    if (restant > 0) {
-      btn.disabled = true;
-      btn.textContent = `Envoyer (${restant}s)`;
-      setTimeout(miseAJour, 400);
-    } else {
-      btn.disabled = false;
-      btn.textContent = "Envoyer";
-    }
-  };
-  miseAJour();
-}
-
-function envoyerMessageChat() {
-  const champ = document.getElementById("champ-chat");
-  const msgEl = document.getElementById("msg-chat");
+function envoyerMp(amiUid) {
+  if (!firebaseAuthUser) return;
+  const champ = document.getElementById("champ-mp");
+  const msgEl = document.getElementById("msg-mp");
   if (!champ) return;
   const texteBrut = (champ.value || "").trim();
   if (!texteBrut) return;
-  if (!state.pseudo) {
-    msgEl.textContent = "Choisis d'abord un pseudo dans l'onglet Classement.";
-    msgEl.className = "bc-msg bc-msg-err";
-    return;
-  }
-  if (!chatConfigure() || !initialiserFirebase()) {
-    msgEl.textContent = "Le chat n'est pas configuré.";
-    msgEl.className = "bc-msg bc-msg-err";
-    return;
-  }
-  const attente = DELAI_ANTI_SPAM_CHAT_MS - (Date.now() - dernierEnvoiChat);
+
+  const maintenant = Date.now();
+  const attente = DELAI_ANTI_SPAM_MP_MS - (maintenant - dernierEnvoiMp);
   if (attente > 0) {
-    msgEl.textContent = `Attends encore ${Math.ceil(attente / 1000)}s avant d'envoyer un nouveau message.`;
-    msgEl.className = "bc-msg bc-msg-err";
+    if (msgEl) { msgEl.textContent = `Attends encore ${Math.ceil(attente / 1000)}s.`; msgEl.className = "bc-msg bc-msg-err"; }
     return;
   }
-  const texte = filtrerMessageChat(texteBrut.slice(0, 200));
-  firebase
-    .database()
-    .ref("chat")
-    .push({ idJoueur: idJoueurClassement(), pseudo: state.pseudo, texte, date: Date.now(), modifie: false, supprime: false })
-    .then(() => {
-      dernierEnvoiChat = Date.now();
-      champ.value = "";
-      msgEl.textContent = "";
-      demarrerCompteAReboursEnvoiChat();
+  const texte = filtrerMessage(texteBrut.slice(0, 200));
+  refConversation(firebaseAuthUser.uid, amiUid)
+    .push({
+      de: firebaseAuthUser.uid,
+      dePseudo: (profilLocal && profilLocal.pseudo) || state.pseudo || "?",
+      texte,
+      date: Date.now(),
     })
-    .catch((e) => {
-      msgEl.textContent = "Échec de l'envoi (" + (e.message || "erreur") + ").";
-      msgEl.className = "bc-msg bc-msg-err";
+    .then(() => {
+      dernierEnvoiMp = Date.now();
+      champ.value = "";
+      if (msgEl) msgEl.textContent = "";
+    })
+    .catch(() => {
+      if (msgEl) { msgEl.textContent = "Échec de l'envoi."; msgEl.className = "bc-msg bc-msg-err"; }
     });
 }
 
-function editerMessageChat(id) {
-  messageEnEditionChat = id;
-  const zone = document.getElementById("bc-chat-messages");
-  if (zone) zone.innerHTML = rendreMessagesChat();
+function rendreMessagesMp() {
+  if (messagesConversation === null) return `<p class="bc-empty">Chargement…</p>`;
+  if (!messagesConversation.length) return `<p class="bc-empty">Dis bonjour !</p>`;
+  return messagesConversation
+    .map(
+      (m) => `
+    <div class="bc-chat-ligne">
+      <span class="bc-chat-pseudo">${escHtml(m.dePseudo || "?")}</span>
+      <span class="bc-chat-texte">${escHtml(m.texte || "")}</span>
+    </div>`
+    )
+    .join("");
 }
 
-function annulerEditionChat() {
-  messageEnEditionChat = null;
-  const zone = document.getElementById("bc-chat-messages");
-  if (zone) zone.innerHTML = rendreMessagesChat();
-}
-
-function validerEditionChat(id) {
-  const champ = document.getElementById("champ-edit-chat");
-  if (!champ) return;
-  const nouveauTexteBrut = (champ.value || "").trim();
-  messageEnEditionChat = null;
-  if (!nouveauTexteBrut || !chatConfigure() || !initialiserFirebase()) {
-    const zone = document.getElementById("bc-chat-messages");
-    if (zone) zone.innerHTML = rendreMessagesChat();
-    return;
-  }
-  const nouveauTexte = filtrerMessageChat(nouveauTexteBrut.slice(0, 200));
-  firebase
-    .database()
-    .ref("chat/" + id)
-    .update({ texte: nouveauTexte, modifie: true });
-}
-
-function supprimerMessageChat(id) {
-  if (!chatConfigure() || !initialiserFirebase()) return;
-  firebase
-    .database()
-    .ref("chat/" + id)
-    .update({ texte: "", supprime: true });
+function rendreConversationOuverte() {
+  return `
+    <div class="bc-mp-panneau">
+      <div id="bc-mp-messages" class="bc-chat-messages" style="max-height:220px;">${rendreMessagesMp()}</div>
+      <div class="bc-code-row" style="margin-top:8px;">
+        <input type="text" id="champ-mp" placeholder="Ton message...">
+        <button class="bc-btn bc-btn-plein bc-btn-petit" data-action="envoyer-mp" data-uid="${conversationOuverteAvec}">Envoyer</button>
+      </div>
+      <div class="bc-msg" id="msg-mp"></div>
+    </div>`;
 }
 
 /* =====================================================================
@@ -3007,6 +2957,9 @@ function deconnecterCompte() {
       listeAmisChargee = null;
       cadeauxRecus = null;
       resultatsRechercheAmis = [];
+      tousLesJoueurs = null;
+      panneauTousJoueursOuvert = false;
+      demandesRecues = null;
       afficherToast("Déconnecté.");
       render();
     });
@@ -3146,6 +3099,14 @@ function renderCompte() {
       <label style="font-size:12px; color:var(--bc-text-dim); display:block; margin-bottom:6px;">Succès affichés (3 max)</label>
       <div class="bc-succes-liste">${rendreSelecteurSucces()}</div>
 
+      <div class="bc-row" style="margin-top:16px; padding-top:12px; border-top:1px solid var(--bc-border);">
+        <span style="font-size:12.5px; color:var(--bc-text-dim);">N'accepte pas les demandes d'ami</span>
+        <label class="bc-switch">
+          <input type="checkbox" ${profilLocal.accepteDemandes === false ? "checked" : ""} data-action="basculer-refus-demandes">
+          <span class="bc-switch-slider"></span>
+        </label>
+      </div>
+
       <button class="bc-btn bc-btn-plein" style="margin-top:16px;" data-action="enregistrer-profil">Enregistrer le profil</button>
     </div>
 
@@ -3160,25 +3121,38 @@ function renderCompte() {
    ===================================================================== */
 
 let listeAmisChargee = null;
+let tousLesJoueurs = null;
+let panneauTousJoueursOuvert = false;
 let cadeauxRecus = null;
 let resultatsRechercheAmis = [];
 
 async function rechercherAmis(terme) {
   if (!firebaseAuthUser) return;
   const termeBas = (terme || "").trim().toLowerCase();
-  if (!termeBas) { resultatsRechercheAmis = []; const z = document.getElementById("bc-amis-resultats"); if (z) z.innerHTML = ""; return; }
+  if (!termeBas) {
+    resultatsRechercheAmis = [];
+    const z = document.getElementById("bc-amis-resultats");
+    if (z) z.innerHTML = "";
+    return;
+  }
+  const zone = document.getElementById("bc-amis-resultats");
+  if (zone) zone.innerHTML = `<p class="bc-empty">Recherche…</p>`;
   try {
     const snap = await firebase.database().ref("profils").once("value");
     const tous = snap.val() || {};
+    // Recherche par sous-chaîne : "sec" trouve aussi bien "Secret" que
+    // "InsectX", peu importe où le terme apparaît dans le pseudo.
     resultatsRechercheAmis = Object.entries(tous)
       .filter(([uid, p]) => uid !== firebaseAuthUser.uid && p.pseudo && p.pseudo.toLowerCase().includes(termeBas))
       .map(([uid, p]) => ({ uid, ...p }))
-      .slice(0, 20);
+      .slice(0, 30);
+    if (zone) zone.innerHTML = rendreResultatsRecherche();
   } catch (e) {
     resultatsRechercheAmis = [];
+    if (zone) {
+      zone.innerHTML = `<p class="bc-empty">Recherche impossible (${escHtml(e.message || "erreur")}). Vérifie que la règle ".read" du nœud "profils" est bien posée sur "profils" lui-même dans Firebase (voir classement.js).</p>`;
+    }
   }
-  const zone = document.getElementById("bc-amis-resultats");
-  if (zone) zone.innerHTML = rendreResultatsRecherche();
 }
 
 async function chargerListeAmis() {
@@ -3203,17 +3177,73 @@ async function chargerCadeauxRecus() {
   }
 }
 
-async function ajouterAmi(uid, pseudo) {
+function refDemandes(uid) { return firebase.database().ref("demandes/" + uid); }
+
+let demandesRecues = null;
+
+async function chargerDemandesRecues() {
   if (!firebaseAuthUser) return;
-  await refAmis(firebaseAuthUser.uid).child(uid).set({ pseudo, depuis: Date.now() });
-  afficherToast(pseudo + " ajouté à tes amis !");
+  try {
+    const snap = await refDemandes(firebaseAuthUser.uid).once("value");
+    const donnees = snap.val() || {};
+    demandesRecues = Object.entries(donnees).map(([uid, v]) => ({ uid, ...v }));
+  } catch (e) {
+    demandesRecues = [];
+  }
+}
+
+async function envoyerDemandeAmi(uid, pseudo) {
+  if (!firebaseAuthUser) return;
+  try {
+    await refDemandes(uid).child(firebaseAuthUser.uid).set({
+      pseudo: (profilLocal && profilLocal.pseudo) || state.pseudo || "?",
+      avatar: (profilLocal && profilLocal.avatar) || "🙂",
+      date: Date.now(),
+    });
+    afficherToast("Demande envoyée à " + pseudo + " !");
+  } catch (e) {
+    afficherToast("Échec de l'envoi de la demande (" + (e.message || "erreur") + "). Vérifie la règle du nœud \"demandes\" dans Firebase (voir classement.js).");
+  }
+  render();
+}
+
+async function accepterDemande(uid, pseudo) {
+  if (!firebaseAuthUser) return;
+  try {
+    await refAmis(firebaseAuthUser.uid).child(uid).set({ pseudo, depuis: Date.now() });
+    await refAmis(uid).child(firebaseAuthUser.uid).set({
+      pseudo: (profilLocal && profilLocal.pseudo) || state.pseudo || "?",
+      depuis: Date.now(),
+    });
+    await refDemandes(firebaseAuthUser.uid).child(uid).remove();
+    afficherToast(pseudo + " est maintenant ton ami !");
+  } catch (e) {
+    afficherToast("Échec de l'acceptation (" + (e.message || "erreur") + "). Vérifie les règles des nœuds \"amis\" et \"demandes\" dans Firebase (voir classement.js).");
+  }
   await chargerListeAmis();
+  await chargerDemandesRecues();
+  render();
+}
+
+async function refuserDemande(uid) {
+  if (!firebaseAuthUser) return;
+  try {
+    await refDemandes(firebaseAuthUser.uid).child(uid).remove();
+  } catch (e) {
+    afficherToast("Échec du refus (" + (e.message || "erreur") + ").");
+  }
+  await chargerDemandesRecues();
   render();
 }
 
 async function retirerAmi(uid) {
   if (!firebaseAuthUser) return;
-  await refAmis(firebaseAuthUser.uid).child(uid).remove();
+  try {
+    await refAmis(firebaseAuthUser.uid).child(uid).remove();
+    await refAmis(uid).child(firebaseAuthUser.uid).remove();
+  } catch (e) {
+    afficherToast("Échec du retrait (" + (e.message || "erreur") + ").");
+  }
   await chargerListeAmis();
   render();
 }
@@ -3224,20 +3254,21 @@ function ouvrirChoixCadeau(uid, pseudo) {
   const visible = zone.style.display !== "none";
   zone.style.display = visible ? "none" : "block";
   if (!visible) {
+    // Seules les boîtes marquées "exclusifCadeau" (ex: le Coffre Multi) se
+    // donnent — les autres boîtes du jeu ne s'échangent pas entre joueurs.
     const mesBoites = Object.entries(state.boites)
-      .filter(([, q]) => q > 0)
-      .map(([id]) => BOITES_PAR_ID[id])
-      .filter(Boolean);
+      .filter(([id, q]) => q > 0 && BOITES_PAR_ID[id] && BOITES_PAR_ID[id].exclusifCadeau)
+      .map(([id]) => BOITES_PAR_ID[id]);
     zone.innerHTML = mesBoites.length
       ? mesBoites.map((b) => `<button class="bc-lien" data-action="envoyer-cadeau" data-uid="${uid}" data-pseudo="${escAttr(pseudo)}" data-box="${b.id}">${escHtml(b.nom)} (×${state.boites[b.id]})</button>`).join(" · ")
-      : `<span style="font-size:12px;color:var(--bc-text-mute);">Tu n'as aucune boîte à offrir.</span>`;
+      : `<span style="font-size:12px;color:var(--bc-text-mute);">Tu n'as pas de boîte offrable (seul le Coffre Multi se donne).</span>`;
   }
 }
 
 async function envoyerCadeau(amiUid, amiPseudo, boxId) {
   if (!firebaseAuthUser) return;
   const box = BOITES_PAR_ID[boxId];
-  if (!box || (state.boites[boxId] || 0) < 1) return;
+  if (!box || !box.exclusifCadeau || (state.boites[boxId] || 0) < 1) return;
   state.boites[boxId] -= 1;
   sauvegarder();
   render();
@@ -3272,19 +3303,69 @@ async function reclamerCadeau(id, boxId, boxNom, dePseudo) {
   render();
 }
 
-function rendreResultatsRecherche() {
-  if (!resultatsRechercheAmis.length) return `<p class="bc-empty">Aucun résultat.</p>`;
-  const mesAmisUids = (listeAmisChargee || []).map((a) => a.uid);
-  return resultatsRechercheAmis
-    .map((p) => {
-      const dejaAmi = mesAmisUids.includes(p.uid);
-      return `<div class="bc-ami-ligne">
+async function chargerTousLesJoueurs() {
+  if (!firebaseAuthUser) return;
+  const zone = document.getElementById("bc-amis-tous");
+  if (zone) zone.innerHTML = `<p class="bc-empty">Chargement…</p>`;
+  try {
+    const snap = await firebase.database().ref("profils").once("value");
+    const tous = snap.val() || {};
+    tousLesJoueurs = Object.entries(tous)
+      .filter(([uid]) => uid !== firebaseAuthUser.uid)
+      .map(([uid, p]) => ({ uid, ...p }))
+      .sort((a, b) => (b.niveau || 0) - (a.niveau || 0))
+      .slice(0, 50);
+  } catch (e) {
+    tousLesJoueurs = [];
+    if (zone) {
+      zone.innerHTML = `<p class="bc-empty">Impossible de charger la liste (${escHtml(e.message || "erreur")}). Vérifie la règle ".read" du nœud "profils" (voir classement.js).</p>`;
+      return;
+    }
+  }
+  if (zone) zone.innerHTML = rendreTousLesJoueurs();
+}
+
+function rendreTousLesJoueurs() {
+  if (tousLesJoueurs === null) return `<p class="bc-empty">Chargement…</p>`;
+  if (!tousLesJoueurs.length) return `<p class="bc-empty">Aucun autre joueur pour l'instant.</p>`;
+  return tousLesJoueurs
+    .map(
+      (p) => `<div class="bc-ami-ligne">
         <span class="bc-ami-avatar">${escHtml(p.avatar || "🙂")}</span>
         <span class="bc-ami-pseudo">${escHtml(p.pseudo || "?")}</span>
         <span class="bc-ami-niveau">Niv. ${p.niveau || 1}</span>
-        ${dejaAmi ? `<span class="bc-lien" style="opacity:.5;">déjà ami</span>` : `<button class="bc-lien" data-action="ajouter-ami" data-uid="${p.uid}" data-pseudo="${escAttr(p.pseudo || "?")}">ajouter</button>`}
-      </div>`;
-    })
+        ${boutonDemandeAmi(p)}
+      </div>`
+    )
+    .join("");
+}
+
+function basculerTousJoueurs() {
+  panneauTousJoueursOuvert = !panneauTousJoueursOuvert;
+  if (panneauTousJoueursOuvert && tousLesJoueurs === null) {
+    chargerTousLesJoueurs();
+  }
+  render();
+}
+
+function boutonDemandeAmi(p) {
+  const mesAmisUids = (listeAmisChargee || []).map((a) => a.uid);
+  if (mesAmisUids.includes(p.uid)) return `<span class="bc-lien" style="opacity:.5;">déjà ami</span>`;
+  if (p.accepteDemandes === false) return `<span class="bc-lien" style="opacity:.5;">n'accepte pas les demandes</span>`;
+  return `<button class="bc-lien" data-action="envoyer-demande-ami" data-uid="${p.uid}" data-pseudo="${escAttr(p.pseudo || "?")}">demander</button>`;
+}
+
+function rendreResultatsRecherche() {
+  if (!resultatsRechercheAmis.length) return `<p class="bc-empty">Aucun résultat.</p>`;
+  return resultatsRechercheAmis
+    .map(
+      (p) => `<div class="bc-ami-ligne">
+        <span class="bc-ami-avatar">${escHtml(p.avatar || "🙂")}</span>
+        <span class="bc-ami-pseudo">${escHtml(p.pseudo || "?")}</span>
+        <span class="bc-ami-niveau">Niv. ${p.niveau || 1}</span>
+        ${boutonDemandeAmi(p)}
+      </div>`
+    )
     .join("");
 }
 
@@ -3296,12 +3377,33 @@ function rendreListeAmis() {
       (a) => `
     <div class="bc-ami-ligne">
       <span class="bc-ami-pseudo">${escHtml(a.pseudo || "?")}</span>
+      <button class="bc-lien" data-action="ouvrir-mp" data-uid="${a.uid}" data-pseudo="${escAttr(a.pseudo || "?")}">💬 message</button>
       <button class="bc-lien" data-action="ouvrir-envoi-cadeau" data-uid="${a.uid}" data-pseudo="${escAttr(a.pseudo || "?")}">🎁 offrir</button>
       <button class="bc-lien" data-action="retirer-ami" data-uid="${a.uid}">retirer</button>
     </div>
-    <div id="bc-cadeau-choix-${a.uid}" class="bc-cadeau-choix" style="display:none;"></div>`
+    <div id="bc-cadeau-choix-${a.uid}" class="bc-cadeau-choix" style="display:none;"></div>
+    ${conversationOuverteAvec === a.uid ? rendreConversationOuverte() : ""}`
     )
     .join("");
+}
+
+function rendreDemandesRecues() {
+  if (!demandesRecues || !demandesRecues.length) return "";
+  return `
+    <div class="bc-card" style="max-width:460px; margin-bottom:18px; border-color:var(--bc-gold);">
+      <p class="bc-card-nom" style="margin-bottom:10px;">👋 Demandes d'ami reçues</p>
+      ${demandesRecues
+        .map(
+          (d) => `
+        <div class="bc-ami-ligne">
+          <span class="bc-ami-avatar">${escHtml(d.avatar || "🙂")}</span>
+          <span class="bc-ami-pseudo">${escHtml(d.pseudo || "?")}</span>
+          <button class="bc-btn bc-btn-plein bc-btn-petit" data-action="accepter-demande" data-uid="${d.uid}" data-pseudo="${escAttr(d.pseudo || "?")}">Accepter</button>
+          <button class="bc-lien" data-action="refuser-demande" data-uid="${d.uid}">refuser</button>
+        </div>`
+        )
+        .join("")}
+    </div>`;
 }
 
 function rendreCadeauxRecus() {
@@ -3334,6 +3436,9 @@ function renderAmis() {
   if (cadeauxRecus === null) {
     chargerCadeauxRecus().then(() => { if (ui.tab === "amis") render(); });
   }
+  if (demandesRecues === null) {
+    chargerDemandesRecues().then(() => { if (ui.tab === "amis") render(); });
+  }
   return `
     <div class="bc-card" style="max-width:460px; margin-bottom:18px;">
       <p class="bc-card-nom" style="margin-bottom:10px;">Rechercher un ami</p>
@@ -3343,6 +3448,16 @@ function renderAmis() {
       </div>
       <div id="bc-amis-resultats" style="margin-top:10px;"></div>
     </div>
+
+    <div class="bc-card" style="max-width:460px; margin-bottom:18px;">
+      <div class="bc-row">
+        <p class="bc-card-nom" style="margin:0;">Tous les joueurs</p>
+        <button class="bc-lien" data-action="basculer-tous-joueurs">${panneauTousJoueursOuvert ? "masquer" : "afficher"}</button>
+      </div>
+      ${panneauTousJoueursOuvert ? `<div id="bc-amis-tous" style="margin-top:10px;">${rendreTousLesJoueurs()}</div>` : ""}
+    </div>
+
+    ${rendreDemandesRecues()}
 
     ${rendreCadeauxRecus()}
 
@@ -3883,6 +3998,19 @@ racine.addEventListener("click", (e) => {
     chargerClassement();
     return;
   }
+  if (action === "basculer-masquage-classement") {
+    state.classementMasque = !state.classementMasque;
+    sauvegarder();
+    if (state.classementMasque) {
+      supprimerDuClassement();
+      afficherToast("Tu n'apparais plus dans le classement.");
+    } else {
+      envoyerScoreAutomatique(true);
+      afficherToast("Tu apparais de nouveau dans le classement.");
+    }
+    render();
+    return;
+  }
   if (action === "creer-compte") {
     creerCompte();
     return;
@@ -3912,6 +4040,12 @@ racine.addEventListener("click", (e) => {
     render();
     return;
   }
+  if (action === "basculer-refus-demandes") {
+    if (!profilLocal) return;
+    profilLocal.accepteDemandes = profilLocal.accepteDemandes === false ? true : false;
+    render();
+    return;
+  }
   if (action === "enregistrer-profil") {
     if (profilLocal) {
       const champPseudo = document.getElementById("champ-pseudo-profil");
@@ -3928,8 +4062,20 @@ racine.addEventListener("click", (e) => {
     rechercherAmis(document.getElementById("champ-recherche-amis").value);
     return;
   }
-  if (action === "ajouter-ami") {
-    ajouterAmi(el.dataset.uid, el.dataset.pseudo);
+  if (action === "basculer-tous-joueurs") {
+    basculerTousJoueurs();
+    return;
+  }
+  if (action === "envoyer-demande-ami") {
+    envoyerDemandeAmi(el.dataset.uid, el.dataset.pseudo);
+    return;
+  }
+  if (action === "accepter-demande") {
+    accepterDemande(el.dataset.uid, el.dataset.pseudo);
+    return;
+  }
+  if (action === "refuser-demande") {
+    refuserDemande(el.dataset.uid);
     return;
   }
   if (action === "retirer-ami") {
@@ -3948,30 +4094,12 @@ racine.addEventListener("click", (e) => {
     reclamerCadeau(el.dataset.id, el.dataset.box, el.dataset.boxnom, el.dataset.depseudo);
     return;
   }
-  if (action === "envoyer-chat") {
-    envoyerMessageChat();
+  if (action === "ouvrir-mp") {
+    ouvrirConversation(el.dataset.uid, el.dataset.pseudo);
     return;
   }
-  if (action === "editer-chat") {
-    editerMessageChat(el.dataset.id);
-    return;
-  }
-  if (action === "annuler-edition-chat") {
-    annulerEditionChat();
-    return;
-  }
-  if (action === "valider-edition-chat") {
-    validerEditionChat(el.dataset.id);
-    return;
-  }
-  if (action === "supprimer-chat") {
-    supprimerMessageChat(el.dataset.id);
-    return;
-  }
-  if (action === "basculer-notif-chat") {
-    state.notificationsChatCoupees = !state.notificationsChatCoupees;
-    sauvegarder();
-    render();
+  if (action === "envoyer-mp") {
+    envoyerMp(el.dataset.uid);
     return;
   }
   if (action === "activer-theme") {
@@ -4153,12 +4281,8 @@ racine.addEventListener("keydown", (e) => {
     const btn = racine.querySelector('[data-action="activer-cheat"]');
     if (btn) btn.click();
   }
-  if (e.target && e.target.id === "champ-chat" && e.key === "Enter") {
-    const btn = racine.querySelector('[data-action="envoyer-chat"]');
-    if (btn) btn.click();
-  }
-  if (e.target && e.target.id === "champ-edit-chat" && e.key === "Enter") {
-    const btn = racine.querySelector('[data-action="valider-edition-chat"]');
+  if (e.target && e.target.id === "champ-mp" && e.key === "Enter") {
+    const btn = racine.querySelector('[data-action="envoyer-mp"]');
     if (btn) btn.click();
   }
   if (e.target && e.target.id === "champ-recherche-amis" && e.key === "Enter") {
@@ -4235,6 +4359,11 @@ function initJeu() {
     renderHeader();
   }, 1000);
   setInterval(tickAutomatisation, 15000);
+  if (classementConfigure()) {
+    envoyerScoreAutomatique(true);
+    setInterval(() => envoyerScoreAutomatique(false), INTERVALLE_ENVOI_SCORE_AUTO);
+    setInterval(() => { if (ui.tab === "classement") chargerClassement(); }, 15000);
+  }
   setInterval(sauvegarder, 8000);
   window.addEventListener("beforeunload", () => { try { sauvegarder(); } catch (e) {} });
 }
