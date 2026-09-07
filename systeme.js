@@ -324,13 +324,6 @@ function chanceMax() { return UPGRADES.chance_max.effet(state.upgrades.chance_ma
 function remise() { return Math.min(0.6, UPGRADES.remise.effet(state.upgrades.remise) + bonusDLCTotal("bonus_remise")); }
 function prixBoite(box) { return Math.max(1, Math.round(box.prix * (1 - remise()))); }
 
-function prixRevente(box, quantite, owned) {
-  if (quantite <= 0 || owned <= 0) return 0;
-  const coutTotal = state.coutsBoites[box.id] || prixBoite(box) * owned;
-  const prixMoyenUnitaire = coutTotal / owned;
-  return Math.max(1, Math.round(prixMoyenUnitaire * 0.7 * quantite));
-}
-
 /* L'XP suit le prix du coffre, mais un coffre trop faible finit par ne plus
    rien rapporter. Le niveau estimé permet d'appliquer la même règle aux DLC
    qui n'ont pas de niveauRequis explicite. */
@@ -1417,7 +1410,6 @@ const DEBLOCAGES_NIVEAU = {
   stats: 7,
   classement: 7,
   chat: 4,
-  revente: 3,
   prestige: 12,
 };
 
@@ -1430,7 +1422,6 @@ const LABELS_DEBLOCAGE = {
   stats: "L'onglet Statistiques",
   classement: "L'onglet Classement",
   chat: "L'onglet Chat",
-  revente: "La revente de boîtes",
   prestige: "L'onglet Prestige",
 };
 
@@ -1826,7 +1817,6 @@ function boiteDebloqueeParNiveau(box) {
 function renderBoutique() {
   const categories = categoriesBoites();
   if (!categories.length) return `<div class="bc-empty">Aucune boîte disponible.</div>`;
-  const revendreDebloquee = niveauEffectifDeblocage() >= DEBLOCAGES_NIVEAU.revente;
   const carteBoite = (box) => {
     if (!boiteDebloqueeParNiveau(box)) {
       const raison = box.prestigeRequis && (state.prestige || 0) < box.prestigeRequis
@@ -1846,9 +1836,6 @@ function renderBoutique() {
       remise() > 0
         ? `<span class="bc-price-old">${box.prix} or</span><span class="bc-price">${prix} or</span>`
         : `<span class="bc-price">${prix} or</span>`;
-    const boutonRevente = revendreDebloquee
-      ? `<button class="bc-btn bc-btn-fantome" data-action="vendre" data-box="${box.id}" ${owned < 1 ? "disabled" : ""}>Revendre (${prixRevente(box, Math.min(qte, owned), owned)} or)</button>`
-      : "";
     return `
     <div class="bc-card" style="--bc-mat:${box.matiere}">
       <p class="bc-card-nom">${escHtml(box.nom)}</p>
@@ -1864,7 +1851,6 @@ function renderBoutique() {
         <button class="bc-step-max" data-action="qte-max-achat" data-box="${box.id}">max</button>
       </div>
       <button class="bc-btn bc-btn-plein" data-action="acheter" data-box="${box.id}">Acheter (${total} or)</button>
-      ${boutonRevente}
       <div class="bc-msg" id="msg-shop-${box.id}"></div>
     </div>`;
   };
@@ -2955,28 +2941,6 @@ racine.addEventListener("click", (e) => {
     state.stats.boitesAcheteesTotal = (state.stats.boitesAcheteesTotal || 0) + qte;
     sauvegarder();
     afficherToast(`+${qte} × ${box.nom}`);
-    render();
-    return;
-  }
-  if (action === "vendre") {
-    const box = BOITES_PAR_ID[el.dataset.box];
-    const owned = state.boites[box.id] || 0;
-    const qte = Math.min(ui.qte["shop:" + box.id] || 1, owned);
-    const msgEl = document.getElementById("msg-shop-" + box.id);
-    if (qte < 1) {
-      msgEl.textContent = "Tu n'en possèdes aucune.";
-      msgEl.className = "bc-msg bc-msg-err";
-      return;
-    }
-    const gain = prixRevente(box, qte, owned);
-    const prixMoyenUnitaire = (state.coutsBoites[box.id] || prixBoite(box) * owned) / owned;
-    state.boites[box.id] -= qte;
-    state.coutsBoites[box.id] = Math.max(0, (state.coutsBoites[box.id] || 0) - prixMoyenUnitaire * qte);
-    state.or += gain;
-    state.stats.boitesVenduesTotal = (state.stats.boitesVenduesTotal || 0) + qte;
-    sauvegarder();
-    afficherToast(`Vendu : ${qte} × ${box.nom} (+${gain} or)`);
-    verifierSucces();
     render();
     return;
   }

@@ -14,9 +14,9 @@
    ===================================================================== */
 
 const MUSIQUES = [
-  { titre: "Piste 1", fichier: "musiques/...and_relax.mp3" },
+  { titre: "Piste 1", fichier: "musiques/and_relax.mp3" },
   { titre: "Piste 2", fichier: "musiques/A_song_for_a_game_10.mp3" },
-  { titre: "Piste 3", fichier: "musiques/calm....mp3" },
+  { titre: "Piste 3", fichier: "musiques/calm.mp3" },
   { titre: "Piste 4", fichier: "musiques/lil_whale.mp3" },
   { titre: "Piste 5", fichier: "musiques/slow_and_fine.mp3" },
   { titre: "Piste 5", fichier: "musiques/wait_a_bit.mp3" },
