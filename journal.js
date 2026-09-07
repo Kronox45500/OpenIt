@@ -14,6 +14,21 @@
 
 const JOURNAL_MISES_A_JOUR = [
   {
+    date: "07/09/2026",
+    titre: "Mise à jour 5.3 - Nouveau DLCs et tutoriel !",
+    texte: "Le tutoriel a été amélioré pour être plus clair et plus simple à suivre. De nouveaux DLCs sont disponibles : nouvelle boîte exclusive et nouveaux skins pour l'interface.",
+  },
+  {
+    date: "07/09/2026",
+    titre: "Mise à jour 5.2 - Musiques et chat",
+    texte: "De nouvelles musiques avec un pannel de contrôle pour les couper ou changer de piste. Le chat est maintenant disponible, avec un système de modération automatique.",
+  },
+  {
+    date: "07/09/2026",
+    titre: "Mise à jour 5.1 - Correctifs",
+    texte: "La fonction de revente de boîtes n'est maintenant plus disponible à cause de beugs. Un nombre de maximum de temps de fonction du jeu hors ligne a été ajouté pour éviter les abus.",
+  },
+  {
     date: "06/09/2026",
     titre: "Mise à jour 5.0 - Classement mondial !",
     texte: "Le classement mondial est arrivé, avec un nouveau système d'expérience. Les joueurs peuvent désormais comparer leurs scores avec le reste du monde.",

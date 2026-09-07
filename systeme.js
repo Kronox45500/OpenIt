@@ -241,6 +241,8 @@ function nouvelEtat() {
     paletteCustom: {},
     musiqueCoupee: true,
     volumeMusique: 40,
+    pistesDesactivees: {},
+    musiqueBouclee: false,
     pseudo: null,
     idJoueurClassement: null,
     notificationsChatCoupees: false,
@@ -448,17 +450,30 @@ function renderBoutonsTheme() {
 
 /* =====================================================================
    MUSIQUE DE FOND — lit tes propres fichiers audio listés dans
-   musiques.js (dossier "musiques/"). Enchaîne les pistes dans l'ordre,
-   puis reboucle. Le bouton (en haut à droite) coupe/rétablit le son, et
-   le curseur à côté règle le volume. La lecture démarre au premier
-   clic du joueur (les navigateurs bloquent le son sans interaction).
+   musiques.js (dossier "musiques/"). Enchaîne les pistes ACTIVES dans
+   l'ordre, puis reboucle. Le joueur peut inclure/exclure des pistes de
+   la rotation et contrôler la lecture depuis le panneau Playlist (🎵) :
+   précédent / lecture-pause / suivant / rejouer depuis le début. Le
+   bouton 🔇/🔊 (en haut à droite) coupe/rétablit le son, et le curseur
+   à côté règle le volume. La lecture démarre au premier clic du joueur
+   (les navigateurs bloquent le son sans interaction).
    ===================================================================== */
 
-let indexMusiqueActuelle = 0;
 let musiqueDemarree = false;
+let pisteActuelleFichier = null;
 
 function listeMusiques() {
   return typeof MUSIQUES !== "undefined" && Array.isArray(MUSIQUES) ? MUSIQUES : [];
+}
+function nomAffichePiste(m) {
+  if (!m || !m.fichier) return "?";
+  const nomFichier = m.fichier.split("/").pop().replace(/\.[a-z0-9]+$/i, "");
+  return nomFichier || m.titre || "?";
+}
+
+function pistesActives() {
+  const desactivees = state.pistesDesactivees || {};
+  return listeMusiques().filter((m) => !desactivees[m.fichier]);
 }
 function elementAudio() {
   return document.getElementById("bc-audio");
@@ -466,35 +481,99 @@ function elementAudio() {
 
 function chargerPisteActuelle() {
   const audio = elementAudio();
-  const pistes = listeMusiques();
-  if (!audio || !pistes.length) return;
-  audio.src = pistes[indexMusiqueActuelle % pistes.length].fichier;
+  const actives = pistesActives();
+  if (!audio || !actives.length) return;
+  if (!pisteActuelleFichier || !actives.some((m) => m.fichier === pisteActuelleFichier)) {
+    pisteActuelleFichier = actives[0].fichier;
+  }
+  audio.src = pisteActuelleFichier;
 }
 
 function lancerLecture() {
   const audio = elementAudio();
   if (!audio) return;
   audio.play().catch(() => { /* lecture bloquée (autoplay) : reprendra au prochain clic */ });
+  renderControlesPlaylist();
 }
 
 function musiqueSuivante() {
-  const pistes = listeMusiques();
-  if (!pistes.length) return;
-  indexMusiqueActuelle = (indexMusiqueActuelle + 1) % pistes.length;
+  const actives = pistesActives();
+  if (!actives.length) return;
+  const indexActuel = actives.findIndex((m) => m.fichier === pisteActuelleFichier);
+  pisteActuelleFichier = actives[(indexActuel + 1) % actives.length].fichier;
   chargerPisteActuelle();
+  lancerLecture();
+  renderListePlaylist();
+}
+
+function musiquePrecedente() {
+  const actives = pistesActives();
+  if (!actives.length) return;
+  const indexActuel = actives.findIndex((m) => m.fichier === pisteActuelleFichier);
+  pisteActuelleFichier = actives[(indexActuel - 1 + actives.length) % actives.length].fichier;
+  chargerPisteActuelle();
+  lancerLecture();
+  renderListePlaylist();
+}
+
+function musiqueRejouer() {
+  const audio = elementAudio();
+  if (!audio) return;
+  if (!musiqueDemarree) { demarrerMusique(); return; }
+  audio.currentTime = 0;
   lancerLecture();
 }
 
-function demarrerMusique() {
-  if (musiqueDemarree) return;
+function musiqueBasculerLectureOuPause() {
   const audio = elementAudio();
-  const pistes = listeMusiques();
-  if (!audio || !pistes.length) return;
+  if (!musiqueDemarree || !audio) { demarrerMusique(); return; }
+  if (audio.paused) lancerLecture();
+  else { audio.pause(); renderControlesPlaylist(); }
+}
+
+function basculerPisteActive(fichier) {
+  if (!state.pistesDesactivees) state.pistesDesactivees = {};
+  const etaitActive = !state.pistesDesactivees[fichier];
+  if (etaitActive) state.pistesDesactivees[fichier] = true;
+  else delete state.pistesDesactivees[fichier];
+  sauvegarder();
+  // Si on vient de désactiver la piste en cours de lecture, on passe à la suivante active.
+  if (etaitActive && fichier === pisteActuelleFichier) {
+    musiqueSuivante();
+  }
+  renderListePlaylist();
+}
+
+function gererFinDePiste() {
+  if (state.musiqueBouclee) {
+    const audio = elementAudio();
+    if (audio) {
+      audio.currentTime = 0;
+      lancerLecture();
+    }
+  } else {
+    musiqueSuivante();
+  }
+}
+
+function basculerBouclage() {
+  state.musiqueBouclee = !state.musiqueBouclee;
+  sauvegarder();
+  renderControlesPlaylist();
+}
+
+function demarrerMusique() {
+  const audio = elementAudio();
+  const actives = pistesActives();
+  if (!audio || !actives.length) return;
+  const dejaChargee = musiqueDemarree;
   musiqueDemarree = true;
   audio.volume = (state.volumeMusique ?? 40) / 100;
   audio.muted = state.musiqueCoupee;
-  audio.addEventListener("ended", musiqueSuivante);
-  chargerPisteActuelle();
+  if (!dejaChargee) {
+    audio.addEventListener("ended", gererFinDePiste);
+    chargerPisteActuelle();
+  }
   lancerLecture();
 }
 
@@ -520,6 +599,39 @@ function renderBoutonMusique() {
   if (btn) btn.textContent = state.musiqueCoupee ? "🔇" : "🔊";
   const slider = document.getElementById("bc-volume");
   if (slider) slider.value = state.volumeMusique ?? 40;
+}
+
+function renderControlesPlaylist() {
+  const audio = elementAudio();
+  const txtPiste = document.getElementById("bc-playlist-piste-actuelle");
+  const btnLecture = document.getElementById("bc-playlist-btn-lecture");
+  const btnBoucle = document.getElementById("bc-playlist-btn-boucle");
+  if (txtPiste) {
+    const piste = listeMusiques().find((m) => m.fichier === pisteActuelleFichier);
+    txtPiste.textContent = piste ? "En cours : " + nomAffichePiste(piste) : "Aucune piste en cours de lecture.";
+  }
+  if (btnLecture) btnLecture.textContent = audio && musiqueDemarree && !audio.paused ? "⏸" : "▶";
+  if (btnBoucle) btnBoucle.classList.toggle("bc-icon-btn-actif", !!state.musiqueBouclee);
+}
+
+function renderListePlaylist() {
+  const zone = document.getElementById("bc-playlist-liste");
+  if (!zone) return;
+  const pistes = listeMusiques();
+  if (!pistes.length) {
+    zone.innerHTML = `<p class="bc-empty">Aucune piste définie dans musiques.js.</p>`;
+    return;
+  }
+  zone.innerHTML = pistes
+    .map((m) => {
+      const active = !(state.pistesDesactivees || {})[m.fichier];
+      const enCours = m.fichier === pisteActuelleFichier;
+      return `<label class="bc-playlist-item" style="${enCours ? "color:var(--bc-gold-soft); font-weight:600;" : ""}">
+        <input type="checkbox" ${active ? "checked" : ""} data-action="basculer-piste" data-fichier="${escAttr(m.fichier)}">
+        ${escHtml(nomAffichePiste(m))}${enCours ? " ▸" : ""}
+      </label>`;
+    })
+    .join("");
 }
 
 /* =====================================================================
@@ -3008,6 +3120,42 @@ racine.addEventListener("click", (e) => {
   }
   if (action === "basculer-musique") {
     basculerMusique();
+    return;
+  }
+  if (action === "ouvrir-playlist") {
+    renderListePlaylist();
+    renderControlesPlaylist();
+    const overlay = document.getElementById("bc-playlist-overlay");
+    if (overlay) overlay.classList.add("bc-visible");
+    return;
+  }
+  if (action === "fermer-playlist") {
+    const overlay = document.getElementById("bc-playlist-overlay");
+    if (overlay) overlay.classList.remove("bc-visible");
+    return;
+  }
+  if (action === "musique-suivante") {
+    musiqueSuivante();
+    return;
+  }
+  if (action === "musique-precedente") {
+    musiquePrecedente();
+    return;
+  }
+  if (action === "musique-rejouer") {
+    musiqueRejouer();
+    return;
+  }
+  if (action === "musique-boucle") {
+    basculerBouclage();
+    return;
+  }
+  if (action === "musique-lecture-pause") {
+    musiqueBasculerLectureOuPause();
+    return;
+  }
+  if (action === "basculer-piste") {
+    basculerPisteActive(el.dataset.fichier);
     return;
   }
   if (action === "ouvrir-tuto") {
