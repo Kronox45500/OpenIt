@@ -155,7 +155,7 @@ function afficherErreursContenu(erreurs) {
 const UPGRADES = {
   revenu: {
     nom: "Revenu passif", desc: "Augmente l'or gagné de 5 par seconde à chaque niveau.",
-    coutBase: 40, croissance: 1.6, max: 30, effet: (n) => 1 + n * 5,
+    coutBase: 8, croissance: 1.42, max: 30, effet: (n) => 1 + n * 5,
   },
   chance_max: {
     nom: "Plafond de chance", desc: "Augmente le plafond réglable de ta Chance (voir le curseur ci-dessous).",
@@ -315,13 +315,21 @@ function revenuParSec() {
   const base = UPGRADES.revenu.effet(state.upgrades.revenu);
   const bonusSucces = 1 + 0.01 * state.succesDebloques.length;
   const bonusDLC = 1 + bonusDLCTotal("bonus_revenu");
-  return base * bonusSucces * bonusPrestige() * bonusDLC;
+  const bonusNiveau = 1 + 0.01 * (niveauPourXp(state.stats.xp || 0) - 1);
+  return base * bonusSucces * bonusPrestige() * bonusDLC * bonusNiveau;
 }
 function bonusPrestige() { return 1 + 0.05 * (state.prestige || 0); }
-function peutPrestiger() { return niveauPourXp(state.stats.xp || 0) >= 20; }
+function peutPrestiger() { return niveauPourXp(state.stats.xp || 0) >= 16; }
 function chanceMax() { return UPGRADES.chance_max.effet(state.upgrades.chance_max) + bonusDLCTotal("bonus_chance_max"); }
 function remise() { return Math.min(0.6, UPGRADES.remise.effet(state.upgrades.remise) + bonusDLCTotal("bonus_remise")); }
 function prixBoite(box) { return Math.max(1, Math.round(box.prix * (1 - remise()))); }
+
+function prixRevente(box, quantite, owned) {
+  if (quantite <= 0 || owned <= 0) return 0;
+  const coutTotal = state.coutsBoites[box.id] || prixBoite(box) * owned;
+  const prixMoyenUnitaire = coutTotal / owned;
+  return Math.max(1, Math.round(prixMoyenUnitaire * 0.7 * quantite));
+}
 
 /* L'XP suit le prix du coffre, mais un coffre trop faible finit par ne plus
    rien rapporter. Le niveau estimé permet d'appliquer la même règle aux DLC
@@ -331,12 +339,10 @@ function niveauCoffrePourXp(box) {
   return Math.max(1, Math.round(1 + Math.log(Math.max(1, box.prix) / 25) / Math.log(1.6)));
 }
 function xpPourOuverture(box) {
-  const niveauActuel = niveauPourXp(state.stats.xp || 0);
-  const ecartNiveau = niveauActuel - niveauCoffrePourXp(box);
-  if (ecartNiveau >= 4) return 0;
-
-  const xpBase = Math.max(1, Math.round(2 * Math.pow(Math.max(1, box.prix) / 25, 0.35)));
-  return Math.max(1, xpBase - Math.max(0, ecartNiveau - 1));
+  // Plus la boîte est chère, plus elle rapporte d'XP. Pas de dégressivité liée
+  // au niveau : le prix des boîtes (et leur déblocage par niveau) suffit déjà
+  // à réguler le rythme, sans risquer de faire tomber le gain d'XP à zéro.
+  return Math.max(1, Math.round(2 * Math.pow(Math.max(1, box.prix) / 25, 0.35)));
 }
 
 /* =====================================================================
@@ -1276,7 +1282,7 @@ function renderNiveauBar() {
 
 /* =====================================================================
    6undecies. PRESTIGE — repartir de zéro contre un bonus permanent,
-   réservé aux joueurs ayant atteint le rang Maître (niveau 20) ou plus.
+   réservé aux joueurs ayant atteint le rang Expert (niveau 16) ou plus.
    ===================================================================== */
 
 function effectuerPrestige() {
@@ -1350,12 +1356,12 @@ function renderPrestige() {
   return `
     <div class="bc-card" style="max-width:520px;">
       <p class="bc-card-nom" style="font-size:16px; margin-bottom:6px;">Prestige</p>
-      <p class="bc-card-sub" style="margin-bottom:16px;">Repars de zéro pour un bonus de revenu permanent et de vraies nouveautés. Réservé aux joueurs de rang Maître (niveau 20) ou plus.</p>
+      <p class="bc-card-sub" style="margin-bottom:16px;">Repars de zéro pour un bonus de revenu permanent et de vraies nouveautés. Réservé aux joueurs de rang Expert (niveau 16) ou plus.</p>
       <div class="bc-row" style="margin-bottom:8px;"><span class="bc-owned">Prestige actuel</span><span class="bc-price">${prestigeActuel}</span></div>
       <div class="bc-row" style="margin-bottom:8px;"><span class="bc-owned">Bonus de revenu actuel</span><span class="bc-price">+${bonusActuel}%</span></div>
       <div class="bc-row" style="margin-bottom:16px;"><span class="bc-owned">Bonus après ce Prestige</span><span class="bc-price">+${bonusApres}%</span></div>
       <button class="bc-btn bc-btn-plein" data-action="prestige" ${eligible ? "" : "disabled"}>
-        ${eligible ? "Faire un Prestige" : `Atteins le niveau 20 (actuellement ${niveau})`}
+        ${eligible ? "Faire un Prestige" : `Atteins le niveau 16 (actuellement ${niveau})`}
       </button>
     </div>
     <p style="font-size:12px;color:var(--bc-text-mute);margin:16px 0 6px;">
@@ -1378,7 +1384,7 @@ function renderPrestige() {
    "1.6" ci-dessous suffit à retoucher tout le rythme de progression. */
 function xpRequisePour(niveau) {
   if (niveau <= 1) return 0;
-  return Math.round(50 * Math.pow(niveau - 1, 1.6));
+  return Math.round(25 * Math.pow(niveau - 1, 1.42));
 }
 function niveauPourXp(xp) {
   let bas = 1;
@@ -1403,15 +1409,16 @@ function niveauPourXp(xp) {
    ===================================================================== */
 
 const DEBLOCAGES_NIVEAU = {
-  missions: 3,
-  ameliorations: 5,
-  succes: 4,
-  fusion: 6,
-  dlc: 7,
-  stats: 9,
-  classement: 9,
-  chat: 5,
-  prestige: 15,
+  missions: 2,
+  ameliorations: 4,
+  succes: 3,
+  fusion: 5,
+  dlc: 6,
+  stats: 7,
+  classement: 7,
+  chat: 4,
+  revente: 3,
+  prestige: 12,
 };
 
 const LABELS_DEBLOCAGE = {
@@ -1423,6 +1430,7 @@ const LABELS_DEBLOCAGE = {
   stats: "L'onglet Statistiques",
   classement: "L'onglet Classement",
   chat: "L'onglet Chat",
+  revente: "La revente de boîtes",
   prestige: "L'onglet Prestige",
 };
 
@@ -1818,6 +1826,7 @@ function boiteDebloqueeParNiveau(box) {
 function renderBoutique() {
   const categories = categoriesBoites();
   if (!categories.length) return `<div class="bc-empty">Aucune boîte disponible.</div>`;
+  const revendreDebloquee = niveauEffectifDeblocage() >= DEBLOCAGES_NIVEAU.revente;
   const carteBoite = (box) => {
     if (!boiteDebloqueeParNiveau(box)) {
       const raison = box.prestigeRequis && (state.prestige || 0) < box.prestigeRequis
@@ -1837,6 +1846,9 @@ function renderBoutique() {
       remise() > 0
         ? `<span class="bc-price-old">${box.prix} or</span><span class="bc-price">${prix} or</span>`
         : `<span class="bc-price">${prix} or</span>`;
+    const boutonRevente = revendreDebloquee
+      ? `<button class="bc-btn bc-btn-fantome" data-action="vendre" data-box="${box.id}" ${owned < 1 ? "disabled" : ""}>Revendre (${prixRevente(box, Math.min(qte, owned), owned)} or)</button>`
+      : "";
     return `
     <div class="bc-card" style="--bc-mat:${box.matiere}">
       <p class="bc-card-nom">${escHtml(box.nom)}</p>
@@ -1852,6 +1864,7 @@ function renderBoutique() {
         <button class="bc-step-max" data-action="qte-max-achat" data-box="${box.id}">max</button>
       </div>
       <button class="bc-btn bc-btn-plein" data-action="acheter" data-box="${box.id}">Acheter (${total} or)</button>
+      ${boutonRevente}
       <div class="bc-msg" id="msg-shop-${box.id}"></div>
     </div>`;
   };
@@ -2942,6 +2955,28 @@ racine.addEventListener("click", (e) => {
     state.stats.boitesAcheteesTotal = (state.stats.boitesAcheteesTotal || 0) + qte;
     sauvegarder();
     afficherToast(`+${qte} × ${box.nom}`);
+    render();
+    return;
+  }
+  if (action === "vendre") {
+    const box = BOITES_PAR_ID[el.dataset.box];
+    const owned = state.boites[box.id] || 0;
+    const qte = Math.min(ui.qte["shop:" + box.id] || 1, owned);
+    const msgEl = document.getElementById("msg-shop-" + box.id);
+    if (qte < 1) {
+      msgEl.textContent = "Tu n'en possèdes aucune.";
+      msgEl.className = "bc-msg bc-msg-err";
+      return;
+    }
+    const gain = prixRevente(box, qte, owned);
+    const prixMoyenUnitaire = (state.coutsBoites[box.id] || prixBoite(box) * owned) / owned;
+    state.boites[box.id] -= qte;
+    state.coutsBoites[box.id] = Math.max(0, (state.coutsBoites[box.id] || 0) - prixMoyenUnitaire * qte);
+    state.or += gain;
+    state.stats.boitesVenduesTotal = (state.stats.boitesVenduesTotal || 0) + qte;
+    sauvegarder();
+    afficherToast(`Vendu : ${qte} × ${box.nom} (+${gain} or)`);
+    verifierSucces();
     render();
     return;
   }
