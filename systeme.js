@@ -258,6 +258,7 @@ function nouvelEtat() {
     pseudo: null,
     idJoueurClassement: null,
     classementMasque: false,
+    dernierEnvoiCadeauMulti: 0,
     notificationsChatCoupees: false,
     derniereMaj: Date.now(),
   };
@@ -1892,14 +1893,24 @@ function renderHeader() {
   document.getElementById("stat-boxes").textContent = totalBoites;
 }
 function renderTabs() {
-  document.getElementById("bc-tabs").innerHTML = tabsVisibles().map(
-    (t) => `<button class="bc-tab ${ui.tab === t.id ? "actif" : ""}" data-action="tab" data-tab="${t.id}">${t.label}</button>`
-  ).join("");
+  document.getElementById("bc-tabs").innerHTML = tabsVisibles()
+    .map((t) => `<button class="bc-tab ${ui.tab === t.id ? "actif" : ""}" data-action="tab" data-tab="${t.id}">${t.label}</button>`)
+    .join("");
 }
 function renderContent() {
   const visibles = tabsVisibles();
   const tab = visibles.find((t) => t.id === ui.tab) || visibles[0];
-  document.getElementById("bc-content").innerHTML = tab.render();
+  try {
+    document.getElementById("bc-content").innerHTML = tab.render();
+  } catch (e) {
+    console.error("Erreur lors de l'affichage de l'onglet \"" + tab.id + "\" :", e);
+    document.getElementById("bc-content").innerHTML = `
+      <div class="bc-empty" style="color:var(--bc-danger);">
+        Un problème est survenu en affichant cet onglet (${escHtml(e.message || "erreur inconnue")}).<br>
+        Reviens à la Boutique et réessaie ; si ça persiste, dis-moi le message exact ci-dessus.
+      </div>`;
+    return;
+  }
   if (tab.id === "classement") chargerClassement();
   if (tab.id !== "amis") fermerConversation();
 }
@@ -2813,7 +2824,7 @@ function initialiserFirebaseAuth() {
     } else if (!jeuDemarre) {
       afficherPortailConnexion();
     }
-    if (jeuDemarre && ui.tab === "compte") render();
+    if (jeuDemarre && (ui.tab === "compte" || ui.tab === "amis")) render();
   });
   return true;
 }
@@ -2855,13 +2866,13 @@ async function chargerSauvegardeCloud() {
     } else {
       // Aucune sauvegarde cloud pour ce compte : nouveau compte. On envoie la
       // sauvegarde LOCALE actuelle (utile pour les joueurs déjà en cours de
-      // partie qui créent un compte — leur progression est conservée), on
-      // crée un profil de base, et on offre 1 Coffre Multi pour amorcer les
-      // cadeaux entre amis (sinon personne n'en aurait jamais un premier !).
+      // partie qui créent un compte — leur progression est conservée) et on
+      // crée un profil de base. Le Coffre Multi ne s'obtient QUE via l'action
+      // "Offrir un Coffre Multi" à un ami (voir envoyerCoffreMultiA) — pas
+      // de cadeau de bienvenue, ce n'est plus nécessaire : l'action mint un
+      // exemplaire pour les deux sans consommer d'inventaire existant.
       syncCloudEnCours = true;
       await ref.set(JSON.stringify(state));
-      const coffreMulti = BOITES_DE_BASE.find((b) => b.exclusifCadeau);
-      if (coffreMulti) state.boites[coffreMulti.id] = (state.boites[coffreMulti.id] || 0) + 1;
       try {
         await firebase.database().ref("profils/" + firebaseAuthUser.uid).set({
           pseudo: state.pseudo || firebaseAuthUser.email.split("@")[0],
@@ -2875,7 +2886,7 @@ async function chargerSauvegardeCloud() {
         });
       } catch (e) { /* le profil pourra être créé plus tard depuis l'onglet Compte */ }
       syncCloudEnCours = false;
-      if (jeuDemarre) afficherToast("☁️ Sauvegarde envoyée dans le cloud pour ce compte. 🎁 Un Coffre Multi t'attend !");
+      if (jeuDemarre) afficherToast("☁️ Sauvegarde envoyée dans le cloud pour ce compte.");
     }
     if (jeuDemarre) render();
   } catch (e) {
@@ -2960,6 +2971,7 @@ function deconnecterCompte() {
       tousLesJoueurs = null;
       panneauTousJoueursOuvert = false;
       demandesRecues = null;
+      demandesEnvoyees = null;
       afficherToast("Déconnecté.");
       render();
     });
@@ -3166,6 +3178,12 @@ async function chargerListeAmis() {
   }
 }
 
+function refDemandes(uid) { return firebase.database().ref("demandes/" + uid); }
+function refDemandesEnvoyees(uid) { return firebase.database().ref("demandesEnvoyees/" + uid); }
+
+let demandesRecues = null;
+let demandesEnvoyees = null;
+
 async function chargerCadeauxRecus() {
   if (!firebaseAuthUser) return;
   try {
@@ -3176,10 +3194,6 @@ async function chargerCadeauxRecus() {
     cadeauxRecus = [];
   }
 }
-
-function refDemandes(uid) { return firebase.database().ref("demandes/" + uid); }
-
-let demandesRecues = null;
 
 async function chargerDemandesRecues() {
   if (!firebaseAuthUser) return;
@@ -3192,17 +3206,41 @@ async function chargerDemandesRecues() {
   }
 }
 
+async function chargerDemandesEnvoyees() {
+  if (!firebaseAuthUser) return;
+  try {
+    const snap = await refDemandesEnvoyees(firebaseAuthUser.uid).once("value");
+    const donnees = snap.val() || {};
+    demandesEnvoyees = Object.entries(donnees).map(([uid, v]) => ({ uid, ...v }));
+  } catch (e) {
+    demandesEnvoyees = [];
+  }
+}
+
 async function envoyerDemandeAmi(uid, pseudo) {
   if (!firebaseAuthUser) return;
   try {
+    const monPseudo = (profilLocal && profilLocal.pseudo) || state.pseudo || "?";
     await refDemandes(uid).child(firebaseAuthUser.uid).set({
-      pseudo: (profilLocal && profilLocal.pseudo) || state.pseudo || "?",
+      pseudo: monPseudo,
       avatar: (profilLocal && profilLocal.avatar) || "🙂",
       date: Date.now(),
     });
+    await refDemandesEnvoyees(firebaseAuthUser.uid).child(uid).set({ pseudo, date: Date.now() });
     afficherToast("Demande envoyée à " + pseudo + " !");
   } catch (e) {
     afficherToast("Échec de l'envoi de la demande (" + (e.message || "erreur") + "). Vérifie la règle du nœud \"demandes\" dans Firebase (voir classement.js).");
+  }
+  render();
+}
+
+async function annulerDemandeEnvoyee(uid) {
+  if (!firebaseAuthUser) return;
+  try {
+    await refDemandes(uid).child(firebaseAuthUser.uid).remove();
+    await refDemandesEnvoyees(firebaseAuthUser.uid).child(uid).remove();
+  } catch (e) {
+    afficherToast("Échec de l'annulation (" + (e.message || "erreur") + ").");
   }
   render();
 }
@@ -3216,12 +3254,12 @@ async function accepterDemande(uid, pseudo) {
       depuis: Date.now(),
     });
     await refDemandes(firebaseAuthUser.uid).child(uid).remove();
+    await refDemandesEnvoyees(uid).child(firebaseAuthUser.uid).remove();
     afficherToast(pseudo + " est maintenant ton ami !");
   } catch (e) {
     afficherToast("Échec de l'acceptation (" + (e.message || "erreur") + "). Vérifie les règles des nœuds \"amis\" et \"demandes\" dans Firebase (voir classement.js).");
   }
   await chargerListeAmis();
-  await chargerDemandesRecues();
   render();
 }
 
@@ -3229,10 +3267,10 @@ async function refuserDemande(uid) {
   if (!firebaseAuthUser) return;
   try {
     await refDemandes(firebaseAuthUser.uid).child(uid).remove();
+    await refDemandesEnvoyees(uid).child(firebaseAuthUser.uid).remove();
   } catch (e) {
     afficherToast("Échec du refus (" + (e.message || "erreur") + ").");
   }
-  await chargerDemandesRecues();
   render();
 }
 
@@ -3248,44 +3286,59 @@ async function retirerAmi(uid) {
   render();
 }
 
-function ouvrirChoixCadeau(uid, pseudo) {
-  const zone = document.getElementById("bc-cadeau-choix-" + uid);
-  if (!zone) return;
-  const visible = zone.style.display !== "none";
-  zone.style.display = visible ? "none" : "block";
-  if (!visible) {
-    // Seules les boîtes marquées "exclusifCadeau" (ex: le Coffre Multi) se
-    // donnent — les autres boîtes du jeu ne s'échangent pas entre joueurs.
-    const mesBoites = Object.entries(state.boites)
-      .filter(([id, q]) => q > 0 && BOITES_PAR_ID[id] && BOITES_PAR_ID[id].exclusifCadeau)
-      .map(([id]) => BOITES_PAR_ID[id]);
-    zone.innerHTML = mesBoites.length
-      ? mesBoites.map((b) => `<button class="bc-lien" data-action="envoyer-cadeau" data-uid="${uid}" data-pseudo="${escAttr(pseudo)}" data-box="${b.id}">${escHtml(b.nom)} (×${state.boites[b.id]})</button>`).join(" · ")
-      : `<span style="font-size:12px;color:var(--bc-text-mute);">Tu n'as pas de boîte offrable (seul le Coffre Multi se donne).</span>`;
-  }
+const COOLDOWN_CADEAU_MULTI_MS = 10 * 60 * 1000;
+
+function coffreMultiInfo() {
+  return BOITES_DE_BASE.find((b) => b.exclusifCadeau);
 }
 
-async function envoyerCadeau(amiUid, amiPseudo, boxId) {
+function cooldownCadeauMultiRestant() {
+  const dernier = state.dernierEnvoiCadeauMulti || 0;
+  return Math.max(0, COOLDOWN_CADEAU_MULTI_MS - (Date.now() - dernier));
+}
+
+function formaterCompteARebours(ms) {
+  const totalSecondes = Math.ceil(ms / 1000);
+  const minutes = Math.floor(totalSecondes / 60);
+  const secondes = totalSecondes % 60;
+  return minutes > 0 ? `${minutes} min ${String(secondes).padStart(2, "0")} s` : `${secondes} s`;
+}
+
+/* Offrir un Coffre Multi ne puise JAMAIS dans l'inventaire du joueur :
+   l'action crée un exemplaire pour SOI et un exemplaire pour l'ami en
+   même temps, à partir de rien. C'est la SEULE façon d'obtenir un Coffre
+   Multi (aucun achat, aucun cadeau de bienvenue) — protégée par un
+   cooldown de 10 minutes pour éviter d'en générer en boucle. */
+async function envoyerCoffreMultiA(amiUid, amiPseudo) {
   if (!firebaseAuthUser) return;
-  const box = BOITES_PAR_ID[boxId];
-  if (!box || !box.exclusifCadeau || (state.boites[boxId] || 0) < 1) return;
-  state.boites[boxId] -= 1;
+  const reste = cooldownCadeauMultiRestant();
+  if (reste > 0) {
+    afficherToast("Attends encore " + formaterCompteARebours(reste) + " avant de pouvoir offrir un nouveau Coffre Multi.");
+    return;
+  }
+  const box = coffreMultiInfo();
+  if (!box) return;
+
+  state.boites[box.id] = (state.boites[box.id] || 0) + 1;
+  state.dernierEnvoiCadeauMulti = Date.now();
   sauvegarder();
   render();
   try {
     await refCadeaux(amiUid).push({
-      boxId,
+      boxId: box.id,
       boxNom: box.nom,
       deUid: firebaseAuthUser.uid,
       dePseudo: (profilLocal && profilLocal.pseudo) || state.pseudo || "Un ami",
       date: Date.now(),
     });
-    afficherToast("Cadeau envoyé à " + amiPseudo + " !");
+    afficherToast("🎁 Coffre Multi offert à " + amiPseudo + " — tu en as reçu un aussi !");
   } catch (e) {
-    // échec d'envoi : on rend la boîte au joueur
-    state.boites[boxId] += 1;
+    // échec d'envoi côté ami : on annule aussi le sien pour rester cohérent,
+    // mais le cooldown reste posé (on ne veut pas encourager le spam de
+    // tentatives échouées).
+    state.boites[box.id] = Math.max(0, (state.boites[box.id] || 0) - 1);
     sauvegarder();
-    afficherToast("Échec de l'envoi du cadeau.");
+    afficherToast("Échec de l'envoi (" + (e.message || "erreur") + ").");
     render();
   }
 }
@@ -3372,16 +3425,20 @@ function rendreResultatsRecherche() {
 function rendreListeAmis() {
   if (listeAmisChargee === null) return `<p class="bc-empty">Chargement…</p>`;
   if (!listeAmisChargee.length) return `<p class="bc-empty">Pas encore d'amis. Utilise la recherche ci-dessus !</p>`;
+  const reste = cooldownCadeauMultiRestant();
+  const boutonCadeau = (uid, pseudo) =>
+    reste > 0
+      ? `<span class="bc-lien" style="opacity:.5;" title="Cooldown en cours">🎁 offrir (${formaterCompteARebours(reste)})</span>`
+      : `<button class="bc-lien" data-action="offrir-coffre-multi" data-uid="${uid}" data-pseudo="${escAttr(pseudo)}">🎁 offrir un Coffre Multi</button>`;
   return listeAmisChargee
     .map(
       (a) => `
     <div class="bc-ami-ligne">
       <span class="bc-ami-pseudo">${escHtml(a.pseudo || "?")}</span>
       <button class="bc-lien" data-action="ouvrir-mp" data-uid="${a.uid}" data-pseudo="${escAttr(a.pseudo || "?")}">💬 message</button>
-      <button class="bc-lien" data-action="ouvrir-envoi-cadeau" data-uid="${a.uid}" data-pseudo="${escAttr(a.pseudo || "?")}">🎁 offrir</button>
+      ${boutonCadeau(a.uid, a.pseudo || "?")}
       <button class="bc-lien" data-action="retirer-ami" data-uid="${a.uid}">retirer</button>
     </div>
-    <div id="bc-cadeau-choix-${a.uid}" class="bc-cadeau-choix" style="display:none;"></div>
     ${conversationOuverteAvec === a.uid ? rendreConversationOuverte() : ""}`
     )
     .join("");
@@ -3391,7 +3448,7 @@ function rendreDemandesRecues() {
   if (!demandesRecues || !demandesRecues.length) return "";
   return `
     <div class="bc-card" style="max-width:460px; margin-bottom:18px; border-color:var(--bc-gold);">
-      <p class="bc-card-nom" style="margin-bottom:10px;">👋 Demandes d'ami reçues</p>
+      <p class="bc-card-nom" style="margin-bottom:10px;">🔔 Demandes d'ami reçues (${demandesRecues.length})</p>
       ${demandesRecues
         .map(
           (d) => `
@@ -3400,6 +3457,24 @@ function rendreDemandesRecues() {
           <span class="bc-ami-pseudo">${escHtml(d.pseudo || "?")}</span>
           <button class="bc-btn bc-btn-plein bc-btn-petit" data-action="accepter-demande" data-uid="${d.uid}" data-pseudo="${escAttr(d.pseudo || "?")}">Accepter</button>
           <button class="bc-lien" data-action="refuser-demande" data-uid="${d.uid}">refuser</button>
+        </div>`
+        )
+        .join("")}
+    </div>`;
+}
+
+function rendreDemandesEnvoyees() {
+  if (!demandesEnvoyees || !demandesEnvoyees.length) return "";
+  return `
+    <div class="bc-card" style="max-width:460px; margin-bottom:18px;">
+      <p class="bc-card-nom" style="margin-bottom:10px;">Demandes envoyées (${demandesEnvoyees.length})</p>
+      ${demandesEnvoyees
+        .map(
+          (d) => `
+        <div class="bc-ami-ligne">
+          <span class="bc-ami-pseudo">${escHtml(d.pseudo || "?")}</span>
+          <span style="font-size:11.5px; color:var(--bc-text-mute);">en attente…</span>
+          <button class="bc-lien" data-action="annuler-demande-envoyee" data-uid="${d.uid}">annuler</button>
         </div>`
         )
         .join("")}
@@ -3439,6 +3514,9 @@ function renderAmis() {
   if (demandesRecues === null) {
     chargerDemandesRecues().then(() => { if (ui.tab === "amis") render(); });
   }
+  if (demandesEnvoyees === null) {
+    chargerDemandesEnvoyees().then(() => { if (ui.tab === "amis") render(); });
+  }
   return `
     <div class="bc-card" style="max-width:460px; margin-bottom:18px;">
       <p class="bc-card-nom" style="margin-bottom:10px;">Rechercher un ami</p>
@@ -3457,12 +3535,14 @@ function renderAmis() {
       ${panneauTousJoueursOuvert ? `<div id="bc-amis-tous" style="margin-top:10px;">${rendreTousLesJoueurs()}</div>` : ""}
     </div>
 
-    ${rendreDemandesRecues()}
+    <div id="bc-demandes-recues">${rendreDemandesRecues()}</div>
 
-    ${rendreCadeauxRecus()}
+    <div id="bc-demandes-envoyees">${rendreDemandesEnvoyees()}</div>
+
+    <div id="bc-cadeaux-recus">${rendreCadeauxRecus()}</div>
 
     <p class="bc-categorie-titre" style="margin-bottom:10px;">Mes amis (${listeAmisChargee ? listeAmisChargee.length : 0})</p>
-    ${rendreListeAmis()}`;
+    <div id="bc-amis-liste">${rendreListeAmis()}</div>`;
 }
 
 /* =====================================================================
@@ -4078,16 +4158,16 @@ racine.addEventListener("click", (e) => {
     refuserDemande(el.dataset.uid);
     return;
   }
+  if (action === "annuler-demande-envoyee") {
+    annulerDemandeEnvoyee(el.dataset.uid);
+    return;
+  }
   if (action === "retirer-ami") {
     retirerAmi(el.dataset.uid);
     return;
   }
-  if (action === "ouvrir-envoi-cadeau") {
-    ouvrirChoixCadeau(el.dataset.uid, el.dataset.pseudo);
-    return;
-  }
-  if (action === "envoyer-cadeau") {
-    envoyerCadeau(el.dataset.uid, el.dataset.pseudo, el.dataset.box);
+  if (action === "offrir-coffre-multi") {
+    envoyerCoffreMultiA(el.dataset.uid, el.dataset.pseudo);
     return;
   }
   if (action === "reclamer-cadeau") {
