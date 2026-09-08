@@ -238,7 +238,7 @@ function nouvelEtat() {
     variantes: {},
     streakJours: 0,
     streakDernierJour: null,
-    upgrades: { revenu: 0, chance_max: 0, remise: 0 },
+    upgrades: { revenu: 0, chance_max: 0, remise: 0, cap_hors_ligne: 0 },
     chanceActuelle: 0,
     dlcDebloques: [],
     stats: { boitesOuvertesTotal: 0, orGagneTotal: 0, fusionsTotal: 0, boitesVenduesTotal: 0, boitesAcheteesTotal: 0, cheatsUtilises: 0, xp: 0, tempsJeuSecondes: 0, meilleurNiveauAtteint: 0 },
@@ -280,12 +280,17 @@ function chargerEtat() {
         if (!(id in data.boitesAchetees)) data.boitesAchetees[id] = 0;
         data.boitesAchetees[id] = Math.min(data.boitesAchetees[id], data.boites[id]);
       });
-      Object.keys(UPGRADES).forEach((id) => { if (!(id in data.upgrades)) data.upgrades[id] = 0; });
+      Object.keys(UPGRADES).forEach((id) => { if (!(id in data.upgrades) || !Number.isFinite(data.upgrades[id])) data.upgrades[id] = 0; });
       Object.keys(base.stats).forEach((k) => { if (!(k in data.stats)) data.stats[k] = base.stats[k]; });
       if (!data.coutsBoites) data.coutsBoites = {};
       Object.keys(BOITES_PAR_ID).forEach((id) => {
         if (!(id in data.coutsBoites)) data.coutsBoites[id] = data.boites[id] * prixBoite(BOITES_PAR_ID[id]);
       });
+      // Répare une sauvegarde déjà corrompue par un ancien bug (or ou
+      // statistiques passés à NaN) : mieux vaut repartir de 0 que de
+      // rester bloqué avec un compteur invalide pour toujours.
+      if (!Number.isFinite(data.or)) data.or = 0;
+      if (!Number.isFinite(data.stats.orGagneTotal)) data.stats.orGagneTotal = 0;
       state = data;
 
       const ecouleSec = Math.max(0, Math.min(capHorsLigneSec(), (Date.now() - state.derniereMaj) / 1000));
@@ -1446,7 +1451,7 @@ function effectuerPrestige() {
   Object.keys(state.boitesAchetees).forEach((id) => { state.boitesAchetees[id] = 0; });
   state.coutsBoites = {};
   state.collection = {};
-  state.upgrades = { revenu: 0, chance_max: 0, remise: 0 };
+  state.upgrades = { revenu: 0, chance_max: 0, remise: 0, cap_hors_ligne: 0 };
   state.chanceActuelle = 0;
   state.missions = { rang: 0, compteurId: 0, actives: [] };
   state.stats.xp = 0;
@@ -2857,6 +2862,10 @@ async function chargerSauvegardeCloud() {
       const base = nouvelEtat();
       const donnees = JSON.parse(distante);
       Object.keys(base).forEach((k) => { if (!(k in donnees)) donnees[k] = base[k]; });
+      if (!donnees.upgrades) donnees.upgrades = {};
+      Object.keys(UPGRADES).forEach((id) => { if (!(id in donnees.upgrades) || !Number.isFinite(donnees.upgrades[id])) donnees.upgrades[id] = 0; });
+      if (!Number.isFinite(donnees.or)) donnees.or = 0;
+      if (donnees.stats && !Number.isFinite(donnees.stats.orGagneTotal)) donnees.stats.orGagneTotal = 0;
       state = donnees;
       appliquerApparence();
       if (jeuDemarre) {
@@ -3979,11 +3988,12 @@ racine.addEventListener("click", (e) => {
   if (action === "ameliorer") {
     const id = el.dataset.id;
     const u = UPGRADES[id];
-    const niveau = state.upgrades[id];
+    const niveau = Number.isFinite(state.upgrades[id]) ? state.upgrades[id] : 0;
+    state.upgrades[id] = niveau; // corrige silencieusement une valeur invalide au passage
     const msgEl = document.getElementById("msg-up-" + id);
     if (niveau >= u.max) return;
     const cout = coutAmelioration(id, niveau);
-    if (cout > state.or) {
+    if (!Number.isFinite(cout) || cout > state.or) {
       msgEl.textContent = "Pas assez d'or.";
       msgEl.className = "bc-msg bc-msg-err";
       return;
