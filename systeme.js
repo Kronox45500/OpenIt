@@ -165,13 +165,9 @@ const UPGRADES = {
     nom: "Négociation", desc: "Réduit le prix des boîtes en boutique (-4%/niveau, max 40%).",
     coutBase: 50, croissance: 1.4, max: 10, effet: (n) => Math.min(n * 0.04, 0.4),
   },
-  cap_hors_ligne: {
-    nom: "Coffre-fort", desc: "Augmente la durée pendant laquelle l'or continue de s'accumuler hors ligne (30 min par niveau, jusqu'à 5h).",
-    coutBase: 150, croissance: 1.6, max: 8, effet: (n) => 3600 + n * 1800,
-  },
 };
 function capHorsLigneSec() {
-  return UPGRADES.cap_hors_ligne.effet(state.upgrades.cap_hors_ligne || 0);
+  return 3600;
 }
 function coutAmelioration(id, niveau) {
   const u = UPGRADES[id];
@@ -223,8 +219,7 @@ function tirerItem(box, chanceActuelle) {
    ===================================================================== */
 
 const SAVE_KEY = "box_collector_save";
-// Le plafond hors-ligne est maintenant dynamique : voir capHorsLigneSec()
-// et l'amélioration "cap_hors_ligne" (1h de base, jusqu'à 5h).
+// Le plafond hors-ligne est fixe : une heure.
 
 function nouvelEtat() {
   const boites = {};
@@ -238,7 +233,7 @@ function nouvelEtat() {
     variantes: {},
     streakJours: 0,
     streakDernierJour: null,
-    upgrades: { revenu: 0, chance_max: 0, remise: 0, cap_hors_ligne: 0 },
+    upgrades: { revenu: 0, chance_max: 0, remise: 0 },
     chanceActuelle: 0,
     dlcDebloques: [],
     stats: { boitesOuvertesTotal: 0, orGagneTotal: 0, fusionsTotal: 0, boitesVenduesTotal: 0, boitesAcheteesTotal: 0, cheatsUtilises: 0, xp: 0, tempsJeuSecondes: 0, meilleurNiveauAtteint: 0 },
@@ -281,6 +276,7 @@ function chargerEtat() {
         data.boitesAchetees[id] = Math.min(data.boitesAchetees[id], data.boites[id]);
       });
       Object.keys(UPGRADES).forEach((id) => { if (!(id in data.upgrades) || !Number.isFinite(data.upgrades[id])) data.upgrades[id] = 0; });
+      delete data.upgrades.cap_hors_ligne;
       Object.keys(base.stats).forEach((k) => { if (!(k in data.stats)) data.stats[k] = base.stats[k]; });
       if (!data.coutsBoites) data.coutsBoites = {};
       Object.keys(BOITES_PAR_ID).forEach((id) => {
@@ -1451,7 +1447,7 @@ function effectuerPrestige() {
   Object.keys(state.boitesAchetees).forEach((id) => { state.boitesAchetees[id] = 0; });
   state.coutsBoites = {};
   state.collection = {};
-  state.upgrades = { revenu: 0, chance_max: 0, remise: 0, cap_hors_ligne: 0 };
+  state.upgrades = { revenu: 0, chance_max: 0, remise: 0 };
   state.chanceActuelle = 0;
   state.missions = { rang: 0, compteurId: 0, actives: [] };
   state.stats.xp = 0;
@@ -2315,10 +2311,6 @@ function renderAmeliorations() {
             </div>
             <p class="bc-slider-note">Baisse ta Chance pour retrouver plus facilement les objets communs qui te manquent.</p>`;
         }
-        if (id === "cap_hors_ligne") {
-          const heures = capHorsLigneSec() / 3600;
-          extra = `<p class="bc-slider-note">Plafond actuel : ${heures}h d'or accumulé hors ligne.</p>`;
-        }
         return `
         <div class="bc-card bc-upgrade-card">
           <div class="bc-upgrade-top">
@@ -2864,6 +2856,7 @@ async function chargerSauvegardeCloud() {
       Object.keys(base).forEach((k) => { if (!(k in donnees)) donnees[k] = base[k]; });
       if (!donnees.upgrades) donnees.upgrades = {};
       Object.keys(UPGRADES).forEach((id) => { if (!(id in donnees.upgrades) || !Number.isFinite(donnees.upgrades[id])) donnees.upgrades[id] = 0; });
+      delete donnees.upgrades.cap_hors_ligne;
       if (!Number.isFinite(donnees.or)) donnees.or = 0;
       if (donnees.stats && !Number.isFinite(donnees.stats.orGagneTotal)) donnees.stats.orGagneTotal = 0;
       state = donnees;
@@ -3870,6 +3863,7 @@ function importerSauvegarde(fichier) {
     Object.keys(base).forEach((k) => { if (!(k in donnees)) donnees[k] = base[k]; });
     Object.keys(BOITES_PAR_ID).forEach((id) => { if (!(id in donnees.boites)) donnees.boites[id] = 0; });
     Object.keys(UPGRADES).forEach((id) => { if (!(id in donnees.upgrades)) donnees.upgrades[id] = 0; });
+    delete donnees.upgrades.cap_hors_ligne;
     Object.keys(base.stats).forEach((k) => { if (!(k in donnees.stats)) donnees.stats[k] = base.stats[k]; });
     if (!donnees.coutsBoites) donnees.coutsBoites = {};
     Object.keys(BOITES_PAR_ID).forEach((id) => {
